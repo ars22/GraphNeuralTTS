@@ -1,0 +1,4 @@
+tqdm==4.48.0
+networkx==2.4
+matplotlib==3.2.2
+sexpdata==0.0.3
