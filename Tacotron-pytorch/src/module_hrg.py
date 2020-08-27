@@ -1,0 +1,104 @@
+# [NOTE]
+# This file is highly based on r9y9's tacotron implementation
+# : https://github.com/r9y9/tacotron_pytorch
+#
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
+from torch_geometric.data.batch import Batch
+from torch_geometric.data import Data
+from .module import CBHG, Encoder, MelDecoder
+
+
+class EmbeddingHRG(nn.Module):
+    def __init__(self, n_vocab, embedding_size, hidden_size):
+        super(EmbeddingHRG, self).__init__()
+        self.embedding = nn.Embedding(n_vocab, embedding_size)
+        self.embedding.weight.data.normal_(0, 0.3)
+        self.conv1 = GCNConv(embedding_size, hidden_size)
+        self.conv2 = GCNConv(hidden_size, hidden_size)
+
+    def forward(self, graphs):
+        """Embeds a list of HRGs
+
+        Args:
+            data ([type]): [List of Pytorch Geom Data objects]
+
+        Returns:
+            [type]: [description]
+        """
+        #  step 1: assign embedding to each node
+        graphs = self._assign_node_features(graphs)
+        
+        #  step 2: batch the graphs together
+        batch = Batch.from_data_list(graphs)
+
+        #  step 3: learn node representations using GCN over the batch
+        x = self._gcn(batch)
+        #  (num_utterances * ?, hidden_size)
+
+        #  step 4: break the batch into utterances again (reverse of step 2),
+        #  but only retain phone/syll nodes
+        x = self.break_into_utterances(x, batch)
+        #  (num_utterances, ?, hidden_size)
+        return x
+
+    def _assign_node_features(self, graphs: List[Data]) -> Data:
+        res = []
+        for graph in graphs:
+            res.append(Data(x=self.embedding(graph.x), edge_index=graph.edge_index, syll_nodes=graph.syll_nodes))
+        return res
+
+
+    def _gcn(self, batch):
+        """Runs GCN over a pytorch geom batch
+
+        Args:
+            batch ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """
+        x = self.conv1(batch.x, batch.edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, batch.edge_index)
+        return x
+
+    def _break_into_utterances(self, x, batch):
+        offset = 0
+        res = []
+        batch_graphs = batch.to_data_list()
+        for graph in batch_graphs:
+            res.append(x[offset + graph.syll_nodes])
+            offset += graph.x.shape[0]
+        return res
+
+
+class TacotronHRG(nn.Module):
+    def __init__(self, n_vocab, hidden_size=256, embedding_size=256, mel_size=80, linear_size=1025, r=5):
+        super(TacotronHRG, self).__init__()
+        self.mel_size = mel_size
+        self.linear_size = linear_size
+        self.embedding = EmbeddingHRG(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
+        # initialization
+        
+        self.encoder = Encoder(embedding_size) 
+        self.mel_decoder = MelDecoder(mel_size, r)
+        self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
+        self.last_proj = nn.Linear(mel_size * 2, linear_size)
+
+    def forward(self, texts, melspec=None, text_lengths=None):
+        batch_size = texts.size(0)
+        txt_feat = self.embedding(texts)
+        # -> (batch_size, timesteps (encoder), text_dim)
+        encoder_outputs = self.encoder(txt_feat, text_lengths)
+        mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
+        # Reshape mel_outputs
+        # -> (batch_size, timesteps (decoder), mel_size)
+        mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
+        linear_outputs = self.postnet(mel_outputs)
+        linear_outputs = self.last_proj(linear_outputs)
+        return mel_outputs, linear_outputs, alignments
