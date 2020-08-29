@@ -5,10 +5,11 @@ import json
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
-from .dataset import getDataLoader
-from .module import Tacotron
+from .dataset_hrg import getDataLoader
+from .module_hrg import Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure
 import shutil
+from torch_geometric.data import Batch
 
 class Solver(object):
     """Super class Solver for all kinds of tasks (train, test)"""
@@ -112,8 +113,13 @@ class Trainer(Solver):
             for curr_b, (txt, text_lengths, mel, spec) in enumerate(self.data_tr):
                 # Sort data by length
                 sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
+                indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
-                txt, mel, spec = txt[indices], mel[indices], spec[indices]
+                if type(txt) == list:
+                    txt = Batch.from_data_list([txt[idx] for idx in indices])
+                else:
+                    txt = txt[indices]
+                mel, spec = mel[indices], spec[indices]
 
                 txt = txt.to(device=self.device)
                 mel = mel.to(device=self.device)
@@ -126,7 +132,6 @@ class Trainer(Solver):
                 self.optim.zero_grad()
                 mel_outputs, linear_outputs, attn = self.model(
                         txt, mel, text_lengths=sorted_lengths)
-
                 mel_loss = self.criterion(mel_outputs, mel)
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
@@ -211,8 +216,13 @@ class Trainer(Solver):
         for curr_b, (txt, text_lengths, mel, spec) in enumerate(self.data_va):
             # Sort data by length
             sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
+            indices = indices.long().numpy()
             sorted_lengths = sorted_lengths.long().numpy()
-            txt, mel, spec = txt[indices], mel[indices], spec[indices]
+            if type(txt) == list:
+                txt = Batch.from_data_list([txt[idx] for idx in indices])
+            else:
+                txt = txt[indices]
+            mel, spec = mel[indices], spec[indices]
 
             txt = txt.to(device=self.device)
             mel = mel.to(device=self.device)

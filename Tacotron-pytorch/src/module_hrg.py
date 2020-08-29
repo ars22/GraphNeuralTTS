@@ -10,15 +10,18 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.data.batch import Batch
 from torch_geometric.data import Data
 from .module import CBHG, Encoder, MelDecoder
+from typing import List
 
 
-class EmbeddingHRG(nn.Module):
+class Embedding(nn.Module):
     def __init__(self, n_vocab, embedding_size, hidden_size):
-        super(EmbeddingHRG, self).__init__()
+        super(Embedding, self).__init__()
         self.embedding = nn.Embedding(n_vocab, embedding_size)
         self.embedding.weight.data.normal_(0, 0.3)
         self.conv1 = GCNConv(embedding_size, hidden_size)
         self.conv2 = GCNConv(hidden_size, hidden_size)
+        self.pad_vector = nn.Parameter(
+            torch.randn(embedding_size), requires_grad=True)
 
     def forward(self, graphs):
         """Embeds a list of HRGs
@@ -30,7 +33,7 @@ class EmbeddingHRG(nn.Module):
             [type]: [description]
         """
         #  step 1: assign embedding to each node
-        graphs = self._assign_node_features(graphs)
+        graphs = self._assign_node_features(graphs.to_data_list())
         
         #  step 2: batch the graphs together
         batch = Batch.from_data_list(graphs)
@@ -41,8 +44,12 @@ class EmbeddingHRG(nn.Module):
 
         #  step 4: break the batch into utterances again (reverse of step 2),
         #  but only retain phone/syll nodes
-        x = self.break_into_utterances(x, batch)
-        #  (num_utterances, ?, hidden_size)
+        x, max_seq_len = self._break_into_utterances(x, batch)
+        #  (num_utterances, ?, hidden_size), max_seq_len (max no. of syll nodes across utterances)
+        
+        #  step 5: pad the gcn outputs of utterances with a random vector
+        x = self._pad_embeddings(x, max_seq_len)
+        #  (num_utterances, max_seq_len, hidden_size)
         return x
 
     def _assign_node_features(self, graphs: List[Data]) -> Data:
@@ -71,18 +78,27 @@ class EmbeddingHRG(nn.Module):
         offset = 0
         res = []
         batch_graphs = batch.to_data_list()
+        max_seq_len = -1
         for graph in batch_graphs:
             res.append(x[offset + graph.syll_nodes])
             offset += graph.x.shape[0]
-        return res
+            max_seq_len = max(max_seq_len, len(graph.syll_nodes))
+        return res, max_seq_len
+
+    def _pad_embeddings(self, x, max_seq_len):
+        res = []
+        for gcn_output in x:
+            res.append(torch.cat(
+                [gcn_output, self.pad_vector.repeat(max_seq_len - gcn_output.shape[0], 1)], dim=0))
+        return torch.stack(res ,dim=0)
 
 
-class TacotronHRG(nn.Module):
+class Tacotron(nn.Module):
     def __init__(self, n_vocab, hidden_size=256, embedding_size=256, mel_size=80, linear_size=1025, r=5):
-        super(TacotronHRG, self).__init__()
+        super(Tacotron, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
-        self.embedding = EmbeddingHRG(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
+        self.embedding = Embedding(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
         # initialization
         
         self.encoder = Encoder(embedding_size) 
@@ -91,8 +107,8 @@ class TacotronHRG(nn.Module):
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
     def forward(self, texts, melspec=None, text_lengths=None):
-        batch_size = texts.size(0)
         txt_feat = self.embedding(texts)
+        batch_size = txt_feat.size(0)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
