@@ -4,6 +4,10 @@
 
 - [ ] Too many open files, probably cause is collating/dataset.
 
+### Todo
+- [x] Training end to end with real HRGs
+- [ ] Use two level HRG graphs
+
 ### Running
 - Dataset metadata_hrg_2.csv: https://drive.google.com/file/d/1d7oXSvgmQBTWs5_yOKxNRVIZHg3Sc4rd/view?usp=sharing
 
