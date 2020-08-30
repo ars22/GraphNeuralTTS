@@ -13,9 +13,10 @@ from .module import CBHG, Encoder, MelDecoder
 from typing import List
 
 
-class Embedding(nn.Module):
+class EmbeddingHRG(nn.Module):
     def __init__(self, n_vocab, embedding_size, hidden_size):
-        super(Embedding, self).__init__()
+        super(EmbeddingHRG, self).__init__()
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.embedding = nn.Embedding(n_vocab, embedding_size)
         self.embedding.weight.data.normal_(0, 0.3)
         self.conv1 = GCNConv(embedding_size, hidden_size)
@@ -32,11 +33,13 @@ class Embedding(nn.Module):
         Returns:
             [type]: [description]
         """
+
         #  step 1: assign embedding to each node
-        graphs = self._assign_node_features(graphs.to_data_list())
-        
+
+        graphs = self._assign_node_features(graphs)
+
         #  step 2: batch the graphs together
-        batch = Batch.from_data_list(graphs)
+        batch = Batch.from_data_list(graphs).to(self.device)
 
         #  step 3: learn node representations using GCN over the batch
         x = self._gcn(batch)
@@ -55,7 +58,7 @@ class Embedding(nn.Module):
     def _assign_node_features(self, graphs: List[Data]) -> Data:
         res = []
         for graph in graphs:
-            res.append(Data(x=self.embedding(graph.x), edge_index=graph.edge_index, syll_nodes=graph.syll_nodes))
+            res.append(Data(x=self.embedding(graph.x.to(self.device)), edge_index=graph.edge_index, syll_nodes=graph.syll_nodes))
         return res
 
 
@@ -98,7 +101,7 @@ class Tacotron(nn.Module):
         super(Tacotron, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
-        self.embedding = Embedding(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
+        self.embedding = EmbeddingHRG(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
         # initialization
         
         self.encoder = Encoder(embedding_size) 

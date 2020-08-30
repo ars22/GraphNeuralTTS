@@ -63,7 +63,7 @@ class Trainer(Solver):
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu)
-
+        self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
         # Validation dataset
         self.data_va = getDataLoader(
                 mode='test',
@@ -77,7 +77,7 @@ class Trainer(Solver):
     def build_model(self):
         """Build model"""
         self.verbose("Build model")
-
+        
         self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
         self.criterion = torch.nn.L1Loss()
 
@@ -116,12 +116,14 @@ class Trainer(Solver):
                 indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
                 if type(txt) == list:
-                    txt = Batch.from_data_list([txt[idx] for idx in indices])
+                    txt = [txt[idx] for idx in indices]
                 else:
                     txt = txt[indices]
+                    txt = txt.to(device=self.device)
+
                 mel, spec = mel[indices], spec[indices]
 
-                txt = txt.to(device=self.device)
+                
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
 

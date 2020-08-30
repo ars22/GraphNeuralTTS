@@ -114,3 +114,6 @@ def make_attn_figure(attn):
     plt.tight_layout()
     return fig
 
+def read_json_from_pth(pth: str) -> dict:
+    with open(pth, "r") as f:
+        return json.load(f)

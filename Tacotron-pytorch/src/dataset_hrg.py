@@ -1,10 +1,13 @@
 import os
 import numpy as np
 import pandas as pd
+import json
 import torch
-from .symbols import txt2seq
+from collections import Counter
 from functools import partial
 from torch_geometric.data import Data, Dataset
+from .symbols import txt2seq
+from .utils import read_json_from_pth
 
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
@@ -17,67 +20,28 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
         raise NotImplementedError
     DS = MyDataset(meta_path, data_dir)
     DL = torch.utils.data.DataLoader(
-            DS, batch_size=batch_size, shuffle=shuffle, drop_last=False,
-            num_workers=n_jobs, collate_fn=partial(collate_fn, r=r), pin_memory=use_gpu)
+        DS, batch_size=batch_size, shuffle=shuffle, drop_last=False,
+        num_workers=n_jobs, collate_fn=partial(collate_fn, r=r), pin_memory=use_gpu)
     return DL
 
 
 def _pad(seq, max_len):
     seq = np.pad(seq, (0, max_len - len(seq)),
-            mode='constant', constant_values=0)
+                 mode='constant', constant_values=0)
     return seq
 
 
 def _pad_2d(x, max_len):
     x = np.pad(x, [(0, max_len - len(x)), (0, 0)],
-            mode="constant", constant_values=0)
+               mode="constant", constant_values=0)
     return x
-
-
-def hrg_to_graph(hrg):
-    """
-    Converts the HRG to graph,
-    
-    Returns:
-        Edge index: (num_edges, 2)
-        Node features: (num_nodes, feature_dim)
-    """
-    # words, sylls = [], []
-    # node_idx = {}
-    # edges = []
-    # node_idxs = []
-    # syll_node_idxs = []
-    # for i, word_rep in enumerate(hrg["hrg"]):
-    #     word_node = f"{word_rep['word']}-{i}"
-    #     word_node_id = get_tok2id(word_rep['word'])
-        
-    #     node_idx[word_node] = len(node_idx)
-    #     node_features.append(embeddings[word_node_id, :])
-    #     for j, syll in enumerate(word_rep["daughters"]):
-    #         syll_node = f"{syll['syll']}-{i}-{j}"
-    #         syll_node_id = get_tok2id(syll['syll'])
-            
-    #         node_idx[syll_node] = len(node_idx)
-    #         syll_node_idxs.add(node_idx[syll_node])
-            
-    #         node_idxs.append(syll_node_id)
-    #         edges.append([node_idx[word_node], node_idx[syll_node]])
-    
-    n_nodes = np.random.randint(10) + 1
-    n_edges = n_nodes + 1
-    n_phone_nodes = np.random.randint(n_nodes) + 1
-    node_idxs = np.arange(n_nodes)
-    syll_node_idxs = np.random.choice(n_nodes, size=n_phone_nodes)
-    edges = np.random.choice(n_nodes, size=(2, n_edges))
-    return Data(x=torch.tensor(node_idxs, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous(),\
-                syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
 
 
 
 class MyDataset(Dataset):
     """Graph Dataset
     """
-    
+
     def __init__(self, meta_path, data_dir):
         # Load meta
         # ---------
@@ -85,23 +49,99 @@ class MyDataset(Dataset):
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
         #
-        meta = {'hrg':[], 'mel': [], 'spec': []}
+        meta = {'hrg': [], 'mel': [], 'spec': []}
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
-                fmel, fspec, n_frames, hrg = line.split('|')
+                fmel, fspec, n_frames, hrg= line.split('|')
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
 
-        self.X = [os.path.join(data_dir, f) for f in meta['hrg']]
+        self.hrgs = [json.loads(hrg) for hrg in meta['hrg']]
+        self.init_X()
         self.Y_mel = [os.path.join(data_dir, f) for f in meta['mel']]
         self.Y_spec = [os.path.join(data_dir, f) for f in meta['spec']]
         assert len(self.X) == len(self.Y_mel) == len(self.Y_spec)
-        
 
+    def init_X(self):
+        """Parse the X by doing the following:
+            - Use all the HRGs to create a vocab (for vanilla Tacotron, the symbol set is fixed 
+            so everything can be done in symbols.py)
+            - Set X[i] = hrg_to_graph(hrg[i])
+        """
+        self.init_vocab()
+        self.X = [self.hrg_to_graph(hrg) for hrg in self.hrgs]
+
+    def init_vocab(self):
+        tokens = Counter(list(self.get_tokens_from_hrg()))
+        tokens = [w[0] for w in tokens.items() if w[1] > 1]
+        tokens.extend([str(i) for i in range(20)])  # position
+        tokens.extend(["<W>", "<SYLL>", "<UNK>"])
+        self.tok2id = {w: i for i, w in enumerate(tokens)}
+        self.id2tok = {i: w for w, i in self.tok2id.items()}
+        self.n_vocab = len(self.tok2id)
+
+
+    def get_tok2id(self, tok):
+        if tok in self.tok2id:
+            return self.tok2id[tok]
+        return self.tok2id["<UNK>"]
+
+    def get_tokens_from_hrg(self):
+        def _get_tokens_from_word_rep(word_rep):
+            tokens = []
+            tokens.append(word_rep["word"])
+            for daughter in word_rep["daughters"]:
+                tokens.append(daughter["syll"])
+            return tokens
+        tokens = []
+        for hrg in self.hrgs:
+            #  print(hrg.keys())
+            for word_rep in hrg:
+                tokens.extend(_get_tokens_from_word_rep(word_rep))
+        return tokens
+
+    def hrg_to_graph(self, hrg):
+        """
+        Converts the HRG to graph,
+
+        NOTE: idx -> index, a way to identify each node in the graph
+            ids -> id for a token returned by the vocab.
+            Idxs are primarily used for specifying the connectivity of the graph
+        Returns:
+            Edge index: (num_edges, 2)
+            Node features: (num_nodes, feature_dim)
+        """
+        words, sylls = [], []
+        node_idx = {}
+        node_ids = []
+        x = []
+
+        edges = []
+        
+        syll_node_idxs = []
+        for i, word_rep in enumerate(hrg):
+            word_node = f"{word_rep['word']}-{i}"
+            word_node_id = self.get_tok2id(word_rep['word'])
+            node_idx[word_node] = len(node_idx)
+            x.append(word_node_id)
+            
+            for j, syll in enumerate(word_rep["daughters"]):
+                syll_node = f"{syll['syll']}-{i}-{j}"
+                syll_node_id = self.get_tok2id(syll['syll'])
+                node_idx[syll_node] = len(node_idx)
+
+                x.append(syll_node_id)
+                syll_node_idxs.append(node_idx[syll_node])
+
+                edges.append([node_idx[word_node], node_idx[syll_node]])
+
+        return Data(x=torch.tensor(x, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
+                    syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
+                
     def __getitem__(self, idx):
-        item = (hrg_to_graph(self.X[idx]),
+        item = (self.X[idx],
                 np.load(self.Y_mel[idx]),
                 np.load(self.Y_spec[idx]))
         return item
@@ -110,9 +150,9 @@ class MyDataset(Dataset):
         return len(self.X)
 
 
+    
 
 def collate_fn(batch, r):
-
     """
     returns:
     x_batch: List[Data]
@@ -122,9 +162,10 @@ def collate_fn(batch, r):
     """
 
     x_batch = [x[0] for x in batch]
+
     n_phone_nodes = [len(x[0].syll_nodes) for x in batch]
     n_phone_nodes = torch.LongTensor(n_phone_nodes)
-    
+
     # (r9y9's comment) Add single zeros frame at least, so plus 1
     max_target_len = np.max([len(x[1]) for x in batch]) + 1
     if max_target_len % r != 0:
@@ -138,5 +179,5 @@ def collate_fn(batch, r):
     c = np.array([_pad_2d(x[2], max_target_len) for x in batch],
                  dtype=np.float32)
     spec_batch = torch.FloatTensor(c)
-    
+
     return x_batch, n_phone_nodes, mel_batch, spec_batch
