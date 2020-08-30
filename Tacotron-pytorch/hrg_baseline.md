@@ -2,7 +2,7 @@
 
 ### Issues
 
-- [ ] Too many open files, probably cause is collating/dataset.
+- [ ] Too many open files, probable cause is collating/dataset. [link](https://stackoverflow.com/questions/48250053/pytorchs-dataloader-too-many-open-files-error-when-no-files-should-be-open)
 
 ### Todo
 - [x] Training end to end with real HRGs
