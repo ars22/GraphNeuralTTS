@@ -221,12 +221,13 @@ class Trainer(Solver):
             indices = indices.long().numpy()
             sorted_lengths = sorted_lengths.long().numpy()
             if type(txt) == list:
-                txt = Batch.from_data_list([txt[idx] for idx in indices])
+                txt = [txt[idx] for idx in indices]
             else:
                 txt = txt[indices]
+                txt = txt.to(device=self.device)
             mel, spec = mel[indices], spec[indices]
 
-            txt = txt.to(device=self.device)
+
             mel = mel.to(device=self.device)
             spec = spec.to(device=self.device)
 
