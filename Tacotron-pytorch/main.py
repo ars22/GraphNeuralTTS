@@ -4,7 +4,7 @@ import random
 import argparse
 import numpy as np
 import matplotlib
-matplotlib.use('Agg'
+matplotlib.use('Agg')
 
 
 if __name__ == '__main__':
