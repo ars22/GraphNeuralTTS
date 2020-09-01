@@ -3,7 +3,8 @@ import torch
 import random
 import argparse
 import numpy as np
-
+import matplotlib
+matplotlib.use('Agg')
 
 if __name__ == '__main__':
     # Arguments
