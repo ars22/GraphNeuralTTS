@@ -204,6 +204,7 @@ class Trainer(Solver):
     def validate(self):
         # (r9y9's comment) Turning off dropout of decoder's prenet causes serious performance
         # drop, not sure why.
+        self.model.embedding.eval()
         self.model.encoder.eval()
         self.model.postnet.eval()
 
