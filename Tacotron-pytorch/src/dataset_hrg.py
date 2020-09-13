@@ -88,12 +88,17 @@ class MyDataset(Dataset):
             return self.tok2id[tok]
         return self.tok2id["<UNK>"]
 
+    
     def get_tokens_from_hrg(self):
         def _get_tokens_from_word_rep(word_rep):
             tokens = []
             tokens.append(word_rep["word"])
             for daughter in word_rep["daughters"]:
-                tokens.append(daughter["syll"])
+                syllnode = ""
+                for syll in daughter:
+                    tokens.append(syll["syll"])
+                    syllnode += tokens[-1]
+                tokens.append(syllnode)
             return tokens
         tokens = []
         for hrg in self.hrgs:
@@ -119,23 +124,35 @@ class MyDataset(Dataset):
         x = []
 
         edges = []
-        
+
         syll_node_idxs = []
         for i, word_rep in enumerate(hrg):
             word_node = f"{word_rep['word']}-{i}"
             word_node_id = self.get_tok2id(word_rep['word'])
             node_idx[word_node] = len(node_idx)
             x.append(word_node_id)
-            
-            for j, syll in enumerate(word_rep["daughters"]):
-                syll_node = f"{syll['syll']}-{i}-{j}"
-                syll_node_id = self.get_tok2id(syll['syll'])
-                node_idx[syll_node] = len(node_idx)
 
-                x.append(syll_node_id)
-                syll_node_idxs.append(node_idx[syll_node])
+            for j, daughter in enumerate(word_rep["daughters"]):
+                # make syll node
+                syll_parent_node = ""
+                for syll in daughter:
+                    syll_parent_node += syll["syll"]
+                syll_parent_node_id = self.get_tok2id(syll_parent_node)
+                x.append(syll_parent_node_id)
+                syll_parent_node = f"{syll_parent_node}-{i}-{j}"
+                node_idx[syll_parent_node] = len(node_idx)
+                edges.append([node_idx[word_node], node_idx[syll_parent_node]])
+                # now prepare phone nodes
+                for k, syll in enumerate(daughter):
+                    
+                    syll_node = f"{syll['syll']}-{i}-{j}-{k}"
+                    syll_node_id = self.get_tok2id(syll['syll'])
+                    node_idx[syll_node] = len(node_idx)
 
-                edges.append([node_idx[word_node], node_idx[syll_node]])
+                    x.append(syll_node_id)
+                    syll_node_idxs.append(node_idx[syll_node])
+
+                    edges.append([node_idx[syll_parent_node], node_idx[syll_node]])
 
         return Data(x=torch.tensor(x, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
                     syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
