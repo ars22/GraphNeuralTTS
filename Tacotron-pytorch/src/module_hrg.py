@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.data.batch import Batch
 from torch_geometric.data import Data
+from torch_geometric.nn import SGConv
 from .module import CBHG, Encoder, MelDecoder
 from typing import List
 
@@ -21,6 +22,7 @@ class EmbeddingHRG(nn.Module):
         self.embedding.weight.data.normal_(0, 0.3)
         self.conv1 = GCNConv(embedding_size, hidden_size)
         self.conv2 = GCNConv(hidden_size, hidden_size)
+        self.conv3 = GCNConv(hidden_size, hidden_size)
         self.pad_vector = nn.Parameter(
             torch.randn(embedding_size), requires_grad=True)
 
@@ -35,7 +37,6 @@ class EmbeddingHRG(nn.Module):
         """
 
         #  step 1: assign embedding to each node
-
         graphs = self._assign_node_features(graphs)
 
         #  step 2: batch the graphs together
@@ -71,10 +72,16 @@ class EmbeddingHRG(nn.Module):
         Returns:
             [type]: [description]
         """
-        x = self.conv1(batch.x, batch.edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, batch.edge_index)
+        x, edge_index = batch.x, batch.edge_index
+
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.3, training=self.training)
+
+        x = F.relu(self.conv2(x, edge_index))
+
+        x = self.conv3(x, edge_index)
+        x = F.dropout(x, p=0.3, training=self.training)
+
         return x
 
     def _break_into_utterances(self, x, batch):
