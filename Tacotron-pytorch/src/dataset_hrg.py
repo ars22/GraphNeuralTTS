@@ -37,7 +37,6 @@ def _pad_2d(x, max_len):
     return x
 
 
-
 class MyDataset(Dataset):
     """Graph Dataset
     """
@@ -57,7 +56,12 @@ class MyDataset(Dataset):
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
-
+        with open(f"{data_dir}/id2tok.json", "r") as f:
+            self.id2tok = json.load(f)
+        with open(f"{data_dir}/tok2id.json", "r") as f:
+            self.tok2id = json.load(f)
+            self.n_vocab = len(self.tok2id)
+        
         self.hrgs = [json.loads(hrg) for hrg in meta['hrg']]
         self.init_X()
         self.Y_mel = [os.path.join(data_dir, f) for f in meta['mel']]
@@ -70,42 +74,12 @@ class MyDataset(Dataset):
             so everything can be done in symbols.py)
             - Set X[i] = hrg_to_graph(hrg[i])
         """
-        self.init_vocab()
         self.X = [self.hrg_to_graph(hrg) for hrg in self.hrgs]
-
-    def init_vocab(self):
-        tokens = Counter(list(self.get_tokens_from_hrg()))
-        tokens = [w[0] for w in tokens.items() if w[1] > 1]
-        tokens.extend([str(i) for i in range(20)])  # position
-        tokens.extend(["<W>", "<SYLL>", "<UNK>"])
-        self.tok2id = {w: i for i, w in enumerate(tokens)}
-        self.id2tok = {i: w for w, i in self.tok2id.items()}
-        self.n_vocab = len(self.tok2id)
-
 
     def get_tok2id(self, tok):
         if tok in self.tok2id:
             return self.tok2id[tok]
         return self.tok2id["<UNK>"]
-
-    
-    def get_tokens_from_hrg(self):
-        def _get_tokens_from_word_rep(word_rep):
-            tokens = []
-            tokens.append(word_rep["word"])
-            for daughter in word_rep["daughters"]:
-                syllnode = ""
-                for syll in daughter:
-                    tokens.append(syll["syll"])
-                    syllnode += tokens[-1]
-                tokens.append(syllnode)
-            return tokens
-        tokens = []
-        for hrg in self.hrgs:
-            #  print(hrg.keys())
-            for word_rep in hrg:
-                tokens.extend(_get_tokens_from_word_rep(word_rep))
-        return tokens
 
     def hrg_to_graph(self, hrg):
         """
