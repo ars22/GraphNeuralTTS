@@ -141,8 +141,13 @@ class Trainer(Solver):
 
                 loss = mel_loss + linear_loss
                 loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['solver']['grad_clip'])
 
+                # Switching to a diff. grad norm scheme
+                # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/challenges/msrlid2020/partA/local/util.py#L845
+                # grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['solver']['grad_clip'])
+                max_grad, _ = clip_gradients_custom(self.model, self.config['solver']['grad_clip'])
+                
+                
                 # Skip this update if grad is NaN
                 if math.isnan(grad_norm):
                     self.verbose('Error : grad norm is NaN @ step ' + str(self.step))
@@ -156,7 +161,7 @@ class Trainer(Solver):
                         'mel_loss'   : mel_loss.item(),
                         'linear_loss': linear_loss.item()
                         })
-                    self.write_log('grad_norm', grad_norm)
+                    self.write_log('max_grad_norm', max_grad)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
