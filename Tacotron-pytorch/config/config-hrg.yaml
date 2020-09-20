@@ -27,11 +27,11 @@ model:
 
 solver:
     # Data config. 
-    meta_path: {'train': 'training-hrg-2/meta_train.txt', 'test': 'training-hrg-2/meta_test.txt'}
+    meta_path: {'train': 'training-hrg-3/meta_train.txt', 'test': 'training-hrg-3/meta_test.txt'}
     data_dir: 'training'
     n_jobs: 0
     # Training config.
-    batch_size: 16
+    batch_size: 64
     grad_clip: 1.0
     total_steps: 400000
     validation_interval: 2000
