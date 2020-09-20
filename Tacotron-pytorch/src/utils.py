@@ -117,3 +117,31 @@ def make_attn_figure(attn):
 def read_json_from_pth(pth: str) -> dict:
     with open(pth, "r") as f:
         return json.load(f)
+
+
+
+def clip_gradients_custom(model, threshold):
+    lim = threshold * 100000
+    max_grad = 0
+    max_grad_name = ""
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+           param_max_grad = param.grad.data.abs().max()
+           if param_max_grad > max_grad:
+              max_grad = param_max_grad
+              max_grad_name = name
+           if 1000000 < param_max_grad:
+             print('Very large gradient at ', param_max_grad)
+    if threshold < max_grad:
+       for param in model.parameters():
+          if param.grad is not None:
+              if lim < max_grad:
+                 param.grad.data.zero_()
+              else:
+                 param.grad.data.mul_(100 / max_grad)
+    
+    if lim < max_grad:
+         torch.save(model.state_dict(), "bad_model.pth")
+         raise RuntimeError("Aborting due to crazy gradient (model saved to bad_model.pth)")
+   
+    return max_grad, max_grad_name

@@ -25,6 +25,10 @@ class EmbeddingHRG(nn.Module):
         self.conv3 = GCNConv(hidden_size, hidden_size)
         self.pad_vector = nn.Parameter(
             torch.randn(embedding_size), requires_grad=True)
+        
+        # initialization scheme from 
+        # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/voices/arctic/rms/local/model.py#L193
+        self.embedding.weight.data.uniform_(-0.1, 0.1)
 
     def forward(self, graphs):
         """Embeds a list of HRGs
