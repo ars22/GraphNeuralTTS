@@ -24,7 +24,7 @@ sys.path.insert(0, '.')
 def preprocess_hrg(args):
     with open(args.config) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
-    # preprocess(args)
+    preprocess(args)
     vocab = Vocab(config['solver']['meta_path']['train'])
     meta_path = config['solver']['data_dir']
     with open(f"{meta_path}/tok2id.json", "w") as f:
