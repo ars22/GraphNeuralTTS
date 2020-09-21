@@ -2,6 +2,11 @@
 Borrows most of the code from preprocess.py, with additional functionality 
 to create a vocab based on the HRGs.
 """
+
+# To import from src
+import sys
+sys.path.insert(0, '.')
+
 from data.preprocess import preprocess, process_utterance
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -16,9 +21,6 @@ import argparse
 import yaml
 from tqdm import tqdm
 import json
-import sys
-# To import from src
-sys.path.insert(0, '.')
 
 
 def preprocess_hrg(args):
@@ -79,8 +81,6 @@ class Vocab:
         
         tokens = []
         for hrg in tqdm(self.hrgs, total=len(self.hrgs), desc="Parsing HRGs"):
-            
-            
             for word_rep in hrg:
                 tokens.extend(_get_tokens_from_word_rep(word_rep))
         return tokens
@@ -90,12 +90,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess ljspeech dataset')
     parser.add_argument('--data-dir', type=str,
                         help='Directory to raw dataset')
-    parser.add_argument('--output-dir', default='training_data/',
-                        type=str, help='Directory to store output', required=False)
     parser.add_argument('--old-meta', type=str,
                         help='previous old meta file', required=True)
     parser.add_argument('--n-jobs', default=cpu_count(), type=int,
                         help='Number of jobs used for feature extraction', required=False)
+    parser.add_argument('--ratio-test', default=0.1, 
+                        type=float, help='ratio of testing examples', required=False)
     parser.add_argument('--config', type=str,
                         help='configure file', required=True)
     args = parser.parse_args()

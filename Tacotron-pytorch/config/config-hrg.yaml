@@ -28,7 +28,7 @@ model:
 solver:
     # Data config. 
     meta_path: {'train': 'training-hrg-3/meta_train.txt', 'test': 'training-hrg-3/meta_test.txt'}
-    data_dir: 'training'
+    data_dir: 'training-hrg-3'
     n_jobs: 0
     # Training config.
     batch_size: 64
