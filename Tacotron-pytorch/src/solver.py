@@ -7,7 +7,7 @@ from pathlib import Path
 from tensorboardX import SummaryWriter
 from .dataset_hrg import getDataLoader
 from .module_hrg import Tacotron
-from .utils import AudioProcessor, make_spec_figure, make_attn_figure
+from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
 from torch_geometric.data import Batch
 
@@ -149,7 +149,7 @@ class Trainer(Solver):
                 
                 
                 # Skip this update if grad is NaN
-                if math.isnan(grad_norm):
+                if math.isnan(max_grad):
                     self.verbose('Error : grad norm is NaN @ step ' + str(self.step))
                 else:
                     self.optim.step()
@@ -165,7 +165,7 @@ class Trainer(Solver):
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, max_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), max_grad, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:
