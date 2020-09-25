@@ -80,7 +80,7 @@ class EmbeddingHRG(nn.Module):
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, p=0.3, training=self.training)
 
-        x = F.relu(self.conv2(x, edge_index))
+        # x = F.relu(self.conv2(x, edge_index))
 
         x = self.conv3(x, edge_index)
         x = F.dropout(x, p=0.3, training=self.training)
