@@ -77,7 +77,6 @@ class EmbeddingHRG(nn.Module):
             [type]: [description]
         """
         x, edge_index = batch.x, batch.edge_index
-
         x = F.relu(self.conv1(x, edge_index))
         x = F.dropout(x, p=0.3, training=self.training)
 
