@@ -7,8 +7,6 @@ from collections import Counter
 from functools import partial
 from torch_geometric.data import Data, Dataset
 import torch_geometric
-from .symbols import txt2seq
-from .utils import read_json_from_pth
 
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
@@ -37,18 +35,19 @@ def _pad_2d(x, max_len):
                mode="constant", constant_values=0)
     return x
 
+
 class HRGVocab:
     def __init__(self, id2tok, tok2id):
         self.id2tok = id2tok
         self.tok2id = tok2id
         self.n_vocab = len(self.id2tok)
         assert len(id2tok) == len(tok2id), "Invalid vocab"
-    
+
     def get_tok2id(self, tok):
         if tok in self.tok2id:
             return self.tok2id[tok]
         return self.tok2id["<UNK>"]
-    
+
     @staticmethod
     def from_dir(pth):
         """Reads and initializes vocab from a directory
@@ -68,21 +67,29 @@ class HRGVocab:
     def __len__(self):
         return len(self.tok2id)
 
+
 class HRG:
     """Place holder class for HRGs.
     Currently just a wrapper around json
     """
 
-    def __init__(self, hrg_json, vocab: HRGVocab):
+    def __init__(self, hrg, vocab: HRGVocab):
         """
 
         Args:
-            hrg_json ([dict]): [HRG in json format]
+            hrg_json ([dict or str]): [HRG in json format. If str, it should be a path to the json containing hrg]
             vocab ([HRGVocab]): [a vocab object that can be used to map the symbols in this HRG]
         """
-        self.hrg_json = hrg_json
-        self.vocab = vocab
+        if isinstance(hrg, dict):
+            self.hrg_json = hrg
+        elif isinstance(hrg, str):
+            with open(hrg, "r") as f:
+                self.hrg_json = json.load(f)
+        else:
+            raise Exception(f"Unknown type {type(hrg)}")
     
+        self.vocab = vocab
+
     def to_pytorch_geom_graph(self) -> torch_geometric.data.Data:
         """
         Converts the HRG to graph,
@@ -120,14 +127,15 @@ class HRG:
                 edges.append([node_idx[word_node], node_idx[syll_parent_node]])
                 # now prepare phone nodes
                 for k, syll in enumerate(daughter):
-                    
+
                     syll_node = f"{syll['syll']}-{i}-{j}-{k}"
                     syll_node_id = self.vocab.get_tok2id(syll['syll'])
                     node_idx[syll_node] = len(node_idx)
                     x.append(syll_node_id)
                     syll_node_idxs.append(node_idx[syll_node])
 
-                    edges.append([node_idx[syll_parent_node], node_idx[syll_node]])
+                    edges.append(
+                        [node_idx[syll_parent_node], node_idx[syll_node]])
 
         return Data(x=torch.tensor(x, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
                     syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
@@ -148,17 +156,18 @@ class MyDataset(Dataset):
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
-                fmel, fspec, n_frames, hrg= line.split('|')
+                fmel, fspec, n_frames, hrg = line.split('|')
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
-        
+
         # make vocab
         self.vocab = HRGVocab.from_dir(data_dir)
         self.n_vocab = len(self.vocab)
 
         # Read HRGs, convert each HRG to a Pytorch Geom object
-        self.hrgs = [HRG(hrg_json=json.loads(hrg), vocab=self.vocab) for hrg in meta['hrg']]
+        self.hrgs = [HRG(hrg_json=json.loads(hrg), vocab=self.vocab)
+                     for hrg in meta['hrg']]
         self.X = [hrg.to_pytorch_geom_graph() for hrg in self.hrgs]
 
         # Read audios
@@ -175,8 +184,6 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.X)
 
-
-    
 
 def collate_fn(batch, r):
     """
