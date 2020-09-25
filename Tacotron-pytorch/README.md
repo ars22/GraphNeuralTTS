@@ -1,3 +1,18 @@
+# TacoHRG
+
+
+## Decoding
+```sh
+python generate_speech_hrg.py --hrg-file hrg.json --output hrg_two_layer_120k.wav --checkpoint-path checkpoints/checkpoint-two-layers/checkpoint_step120000.pth --config config/config-hrg.yaml --data-dir training-hrg-3/
+```
+The data directory should have the vocab files.
+
+
+
+
+--- 
+
+
 # A Pytorch Implementation of Tacotron: End-to-end Text-to-speech Deep-Learning Model
 Implement google's [Tacotron](https://arxiv.org/abs/1703.10135) TTS system with pytorch. 
 ![tacotron](asset/arch_fig.jpg)
