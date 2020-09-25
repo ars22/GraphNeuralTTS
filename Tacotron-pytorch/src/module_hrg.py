@@ -24,7 +24,7 @@ class EmbeddingHRG(nn.Module):
         self.conv2 = GCNConv(hidden_size, hidden_size)
         self.conv3 = GCNConv(hidden_size, hidden_size)
         self.pad_vector = nn.Parameter(
-            torch.randn(embedding_size), requires_grad=True)
+            torch.randn(hidden_size), requires_grad=True)
         
         # initialization scheme from 
         # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/voices/arctic/rms/local/model.py#L193
@@ -114,7 +114,7 @@ class Tacotron(nn.Module):
         self.embedding = EmbeddingHRG(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
         # initialization
         
-        self.encoder = Encoder(embedding_size) 
+        self.encoder = Encoder(hidden_size) 
         self.mel_decoder = MelDecoder(mel_size, r)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
