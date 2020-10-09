@@ -41,6 +41,10 @@ class Trainer(Solver):
         self.log_writer = SummaryWriter(self.log_dir)
         self.checkpoint_path = args.checkpoint_path
         self.checkpoint_dir = args.checkpoint_dir
+        if "use_add_info" in config['solver']:
+            self.use_add_info = config['solver']['use_add_info']
+        else:
+            self.use_add_info = False
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         self.config = config
@@ -62,7 +66,8 @@ class Trainer(Solver):
                 batch_size=_config['batch_size'],
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
-                use_gpu=self.use_gpu)
+                use_gpu=self.use_gpu,
+                use_add_info=self.use_add_info)
         self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
         # Validation dataset
         self.data_va = getDataLoader(
@@ -72,7 +77,8 @@ class Trainer(Solver):
                 batch_size=_config['batch_size'],
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
-                use_gpu=self.use_gpu)
+                use_gpu=self.use_gpu,
+                use_add_info=self.use_add_info)
 
     def build_model(self):
         """Build model"""
@@ -110,7 +116,7 @@ class Trainer(Solver):
         self.model.train()
         self.verbose('Start training: {} batches'.format(len(self.data_tr)))
         while self.step < self.max_step:
-            for curr_b, (txt, text_lengths, mel, spec) in enumerate(self.data_tr):
+            for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_tr):
                 # Sort data by length
                 sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
                 indices = indices.long().numpy()

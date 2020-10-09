@@ -60,7 +60,7 @@ def preprocess(args):
         for line in f:
             parts = line.strip().split('|')
             fpath = os.path.join(args.data_dir, '%s.wav' % parts[0])
-            text = parts[2]
+            text = "|".join(parts[2:])              # Merge additional info with text (separated by |)
             job = executor.submit(partial(process_utterance, fpath, text, config['solver']['data_dir'], AP))
             futures += [job]
 
