@@ -5,8 +5,8 @@ import json
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
-from .dataset_hrg import getDataLoader
-from .module_hrg import Tacotron
+from .dataset import getDataLoader
+from .module import Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
 from torch_geometric.data import Batch
@@ -45,6 +45,8 @@ class Trainer(Solver):
         if "add_info_headers" in config['solver']:
             self.add_info_headers = config['solver']['add_info_headers']
             config['model']['tacotron']['add_info_headers'] = self.add_info_headers
+            print("Using additional headers", self.add_info_headers)
+
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         self.config = config
@@ -68,9 +70,10 @@ class Trainer(Solver):
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu,
                 add_info_headers=self.add_info_headers)
-        self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
+        if hasattr(self.data_tr.dataset, 'n_vocab'):
+            self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
         if len(self.add_info_headers):
-            self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.
+            self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.n_add_info_vocab
         # Validation dataset
         self.data_va = getDataLoader(
                 mode='test',
@@ -141,7 +144,7 @@ class Trainer(Solver):
                 # Forwarding
                 self.optim.zero_grad()
                 mel_outputs, linear_outputs, attn = self.model(
-                        txt, mel, text_lengths=sorted_lengths)
+                        txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
                 mel_loss = self.criterion(mel_outputs, mel)
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \

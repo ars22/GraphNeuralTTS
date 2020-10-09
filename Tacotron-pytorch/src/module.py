@@ -5,7 +5,8 @@
 
 import torch
 import torch.nn as nn
-
+from src.utils import get_tokens_from_additional_info
+from collections import OrderedDict
 
 class Prenet(nn.Module):
     """Prenet in original paper
@@ -290,20 +291,34 @@ class Tacotron(nn.Module):
         self.embedding = nn.Embedding(n_vocab, embedding_size)
         # if there are additional headers, create an embedding file for each
         self.add_info_headers = add_info_headers
-        for header in self.add_info_headers:
-            self.add_info_embedding[header] = nn.Embedding(n_add_info_vocab, embedding_size)
+        self.add_info_embedding = nn.Sequential(OrderedDict([
+            (header, nn.Embedding(n_add_info_vocab, embedding_size))
+            for header in self.add_info_headers
+        ]))
         # initialization
         self.embedding.weight.data.normal_(0, 0.3)
         for header in self.add_info_headers:
-            self.add_info_embedding[header].weight.data.normal_(0, 0.3)
-        self.encoder = Encoder(embedding_size)
+            self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
+        # the embedding size scales with more additional headers
+        self.encoder = Encoder(embedding_size * (len(self.add_info_headers) + 1))
         self.mel_decoder = MelDecoder(mel_size, r)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
-    def forward(self, texts, melspec=None, text_lengths=None):
+    def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         batch_size = texts.size(0)
         txt_feat = self.embedding(texts)
+        # if there are additional headers like speaker or accent we
+        # append them to embedding
+        if len(self.add_info_headers):
+            additional_embeddings = []
+            for header in self.add_info_headers:
+                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(txt_feat.device)
+                additional_embeddings.append(
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).expand_as(txt_feat))
+            txt_feat = torch.cat([txt_feat] + additional_embeddings, dim=-1).to(txt_feat.device)
+            # txt_feat now has concatenated embeddings
+
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
@@ -313,6 +328,4 @@ class Tacotron(nn.Module):
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
         return mel_outputs, linear_outputs, alignments
-
-
 

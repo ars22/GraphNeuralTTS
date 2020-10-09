@@ -6,7 +6,7 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 from .symbols import txt2seq
 from functools import partial
-
+import json
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
     bs = batch_size
@@ -188,11 +188,7 @@ def collate_fn(batch, r):
     spec_batch = torch.FloatTensor(c)
 
     if num_inputs > 3:
-        add_info = {}
-        headers = list(batch[0][3].keys())
-        for h in headers:
-            add_info[h] = np.array([x[3][h] for x in batch])
-            add_info[h] = 
+        add_info = [x[-1] for x in batch]
         return x_batch, input_lengths, mel_batch, spec_batch, add_info
     else:
         return x_batch, input_lengths, mel_batch, spec_batch, None

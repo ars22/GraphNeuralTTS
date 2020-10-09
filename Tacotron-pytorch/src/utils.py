@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from os.path import join
 import soundfile as sf
+import torch
 
 
 class AudioProcessor(object):
@@ -145,3 +146,13 @@ def clip_gradients_custom(model, threshold):
          raise RuntimeError("Aborting due to crazy gradient (model saved to bad_model.pth)")
    
     return max_grad, max_grad_name
+
+
+def get_tokens_from_additional_info(additional_info, header):
+    """
+    additional_info: list of dicts
+    """
+    out = []
+    for x in additional_info:
+        out.append(x[header])
+    return torch.LongTensor(out)
