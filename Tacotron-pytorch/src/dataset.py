@@ -17,10 +17,10 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
     else:
         raise NotImplementedError
     
-    if "use_add_info" in kwargs:
-        use_add_info = kwargs["use_add_info"]
+    if "add_info_headers" in kwargs:
+        add_info_headers = kwargs["add_info_headers"]
     
-    if use_add_info:
+    if len(add_info_headers):
         DS = MyDatasetAddInfo(meta_path, data_dir)
     else:
         DS = MyDataset(meta_path, data_dir)
@@ -134,26 +134,23 @@ class MyDatasetAddInfo(Dataset):
 
         # Separate text and additional info
         self.X = meta['text']
-        if len(meta['text'][0]) > 1:
-            assert len(meta['text'][0]) == 2, "Additional info parsing failed"
-            self.add_info = [ json.loads(t) for t in meta['add_info'] ]
-            headers = list(self.add_info[0].keys())
+        self.add_info = [ json.loads(t) for t in meta['add_info'] ]
+        headers = list(self.add_info[0].keys())
             
-            # make vocab for each additional info
-            self.add_info_vocab = {}
-            for h in headers:
-                self.add_info_vocab[h] = Vocab.from_dir(data_dir, h)
-
-            # Convert to ids
-            self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
-            assert len(self.X) == len(self.add_info)
+        # make vocab for each additional info
+        self.add_info_vocab = {}
+        for h in headers:
+            self.add_info_vocab[h] = Vocab.from_dir(data_dir, h)
+        # Convert to ids
+        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
+        # get max vocab size for all the additional info
+        self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
 
         self.Y_mel = [os.path.join(data_dir, f) for f in meta['mel']]
         self.Y_spec = [os.path.join(data_dir, f) for f in meta['spec']]
-        assert len(self.X) == len(self.Y_mel) == len(self.Y_spec)
-        # Text to id sequence
-        self.X = [txt2seq(x) for x in self.X]
-
+        self.X = [txt2seq(x) for x in meta['text']]
+        assert len(self.X) == len(self.Y_mel) == len(self.Y_spec) == len(self.add_info)
+        
     def __getitem__(self, idx):
         item = (self.X[idx],
                 np.load(self.Y_mel[idx]),

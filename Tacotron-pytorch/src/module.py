@@ -281,13 +281,21 @@ class MelDecoder(nn.Module):
 
 
 class Tacotron(nn.Module):
-    def __init__(self, n_vocab, embedding_size=256, mel_size=80, linear_size=1025, r=5):
+    def __init__(self, n_vocab, embedding_size=256, mel_size=80, linear_size=1025, r=5, 
+            add_info_headers=[], n_add_info_vocab=0):
         super(Tacotron, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
+        # main embedding for characters
         self.embedding = nn.Embedding(n_vocab, embedding_size)
+        # if there are additional headers, create an embedding file for each
+        self.add_info_headers = add_info_headers
+        for header in self.add_info_headers:
+            self.add_info_embedding[header] = nn.Embedding(n_add_info_vocab, embedding_size)
         # initialization
         self.embedding.weight.data.normal_(0, 0.3)
+        for header in self.add_info_headers:
+            self.add_info_embedding[header].weight.data.normal_(0, 0.3)
         self.encoder = Encoder(embedding_size)
         self.mel_decoder = MelDecoder(mel_size, r)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])

@@ -41,10 +41,10 @@ class Trainer(Solver):
         self.log_writer = SummaryWriter(self.log_dir)
         self.checkpoint_path = args.checkpoint_path
         self.checkpoint_dir = args.checkpoint_dir
-        if "use_add_info" in config['solver']:
-            self.use_add_info = config['solver']['use_add_info']
-        else:
-            self.use_add_info = False
+        self.add_info_headers = []
+        if "add_info_headers" in config['solver']:
+            self.add_info_headers = config['solver']['add_info_headers']
+            config['model']['tacotron']['add_info_headers'] = self.add_info_headers
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
         self.config = config
@@ -67,8 +67,10 @@ class Trainer(Solver):
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu,
-                use_add_info=self.use_add_info)
+                add_info_headers=self.add_info_headers)
         self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
+        if len(self.add_info_headers):
+            self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.
         # Validation dataset
         self.data_va = getDataLoader(
                 mode='test',
@@ -78,7 +80,7 @@ class Trainer(Solver):
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu,
-                use_add_info=self.use_add_info)
+                add_info_headers=self.add_info_headers)
 
     def build_model(self):
         """Build model"""
