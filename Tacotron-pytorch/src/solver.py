@@ -232,7 +232,8 @@ class Trainer(Solver):
         linear_loss_avg = 0.0
         total_loss_avg = 0.0
 
-        for curr_b, (txt, text_lengths, mel, spec) in enumerate(self.data_va):
+            
+        for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
             # Sort data by length
             sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
             indices = indices.long().numpy()
@@ -250,7 +251,7 @@ class Trainer(Solver):
 
             # Forwarding
             mel_outputs, linear_outputs, attn = self.model(
-                    txt, mel, text_lengths=sorted_lengths)
+                    txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
 
             mel_loss = self.criterion(mel_outputs, mel)
             # Count linear loss
