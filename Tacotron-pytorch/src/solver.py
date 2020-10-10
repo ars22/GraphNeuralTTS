@@ -155,12 +155,12 @@ class Trainer(Solver):
 
                 # Switching to a diff. grad norm scheme
                 # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/challenges/msrlid2020/partA/local/util.py#L845
-                # grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['solver']['grad_clip'])
-                max_grad, _ = clip_gradients_custom(self.model, self.config['solver']['grad_clip'])
+                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['solver']['grad_clip'])
+                # max_grad, _ = clip_gradients_custom(self.model, self.config['solver']['grad_clip'])
                 
                 
                 # Skip this update if grad is NaN
-                if math.isnan(max_grad):
+                if math.isnan(grad_norm):
                     self.verbose('Error : grad norm is NaN @ step ' + str(self.step))
                 else:
                     self.optim.step()
@@ -172,11 +172,12 @@ class Trainer(Solver):
                         'mel_loss'   : mel_loss.item(),
                         'linear_loss': linear_loss.item()
                         })
-                    self.write_log('max_grad_norm', max_grad)
+                    # self.write_log('max_grad_norm', max_grad)
+                    self.write_log('l2_grad_norm', grad_norm)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, max_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), max_grad, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:

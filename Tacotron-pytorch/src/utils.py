@@ -132,7 +132,7 @@ def clip_gradients_custom(model, threshold):
               max_grad = param_max_grad
               max_grad_name = name
            if 1000000 < param_max_grad:
-             print('Very large gradient at ', param_max_grad)
+             print('Very large gradient at ', max_grad_name)
     if threshold < max_grad:
        for param in model.parameters():
           if param.grad is not None:

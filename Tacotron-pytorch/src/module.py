@@ -190,23 +190,27 @@ class AttnWrapper(nn.Module):
 
 class MelDecoder(nn.Module):
     """Decoder for mel-spectrogram"""
-    def __init__(self, in_size, r):
+    def __init__(self, in_size, r, add_info_headers=[], add_info_embedding_size=32):
         super(MelDecoder, self).__init__()
+        self.add_info_headers = add_info_headers
+        self.add_info_embedding_size = add_info_embedding_size
+        self.concatenated_additional_embedding_size = self.add_info_embedding_size * len(self.add_info_headers) 
         self.in_size = in_size
         self.r = r
         self.prenet = Prenet(in_size * r, hidden_sizes=[256, 128])
         # Input: (prenet output, previous context)
         self.attn_rnn = AttnWrapper(
-            nn.GRUCell(256 + 128, 256),
-            BahdanauAttn(256))
-        self.memory_layer = nn.Linear(256, 256, bias=False)
+            nn.GRUCell(256 + 128 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
+            BahdanauAttn(256 + self.concatenated_additional_embedding_size))
+        self.memory_layer = nn.Linear(
+            256 + concatenated_additional_embedding_size, 256 + concatenated_additional_embedding_size, bias=False)
         # RNN decoder in the original paper
-        self.pre_rnn_dec_proj = nn.Linear(512, 256)
+        self.pre_rnn_dec_proj = nn.Linear(512 + 2*self.concatenated_additional_embedding_size, 256)
         self.rnns_dec = nn.ModuleList(
                 [nn.GRUCell(256, 256) for _ in range(2)])
         self.mel_proj = nn.Linear(256, in_size * r)
         self.max_decode_steps = 200
-
+        
     def forward(self, encoder_outputs, inputs=None):
         """
         Args:
@@ -227,12 +231,14 @@ class MelDecoder(nn.Module):
         # [GO] frames
         init_input = encoder_outputs.data.new(batch_size, self.in_size * self.r).zero_()
         # hidden of attn_rnn
-        attn_rnn_hidden = encoder_outputs.data.new(batch_size, 256).zero_()
+        attn_rnn_hidden = encoder_outputs.data.new(batch_size,
+            256 + self.concatenated_additional_embedding_size).zero_()
         # hidden of rnn decoder
         rnns_dec_hidden = [encoder_outputs.data.new(batch_size, 256).zero_()
                 for _ in range(len(self.rnns_dec))]
         # current attention context
-        curr_ctx = encoder_outputs.data.new(batch_size, 256).zero_()
+        curr_ctx = encoder_outputs.data.new(batch_size,
+            256 + self.concatenated_additional_embedding_size).zero_()
 
         outputs = []
         alignments = []
@@ -282,7 +288,7 @@ class MelDecoder(nn.Module):
 
 
 class Tacotron(nn.Module):
-    def __init__(self, n_vocab, embedding_size=256, mel_size=80, linear_size=1025, r=5, 
+    def __init__(self, n_vocab, embedding_size=256, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
             add_info_headers=[], n_add_info_vocab=0):
         super(Tacotron, self).__init__()
         self.mel_size = mel_size
@@ -292,7 +298,7 @@ class Tacotron(nn.Module):
         # if there are additional headers, create an embedding file for each
         self.add_info_headers = add_info_headers
         self.add_info_embedding = nn.Sequential(OrderedDict([
-            (header, nn.Embedding(n_add_info_vocab, embedding_size))
+            (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
             for header in self.add_info_headers
         ]))
         # initialization
@@ -300,27 +306,28 @@ class Tacotron(nn.Module):
         for header in self.add_info_headers:
             self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
         # the embedding size scales with more additional headers
-        self.encoder = Encoder(embedding_size * (len(self.add_info_headers) + 1))
-        self.mel_decoder = MelDecoder(mel_size, r)
+        self.encoder = Encoder(embedding_size)
+        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         batch_size = texts.size(0)
         txt_feat = self.embedding(texts)
+        # -> (batch_size, timesteps (encoder), text_dim)
+        encoder_outputs = self.encoder(txt_feat, text_lengths)
+
         # if there are additional headers like speaker or accent we
-        # append them to embedding
+        # append them to encoder output
         if len(self.add_info_headers):
             additional_embeddings = []
             for header in self.add_info_headers:
-                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(txt_feat.device)
+                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
                 additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).expand_as(txt_feat))
-            txt_feat = torch.cat([txt_feat] + additional_embeddings, dim=-1).to(txt_feat.device)
-            # txt_feat now has concatenated embeddings
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).expand_as(encoder_outputs))
+            encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
+            # encoder_outputs now has concatenated embeddings
 
-        # -> (batch_size, timesteps (encoder), text_dim)
-        encoder_outputs = self.encoder(txt_feat, text_lengths)
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
         # Reshape mel_outputs
         # -> (batch_size, timesteps (decoder), mel_size)
