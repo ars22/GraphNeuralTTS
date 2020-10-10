@@ -23,10 +23,11 @@ from tqdm import tqdm
 import json
 
 
-def preprocess_hrg(args):
+def preprocess_hrg(args, only_vocab_creation):
     with open(args.config) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
-    preprocess(args)
+    if not only_vocab_creation:
+        preprocess(args)
     vocab = Vocab(config['solver']['meta_path']['train'])
     meta_path = config['solver']['data_dir']
     with open(f"{meta_path}/tok2id.json", "w") as f:
@@ -51,7 +52,7 @@ class Vocab:
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
-                fmel, fspec, n_frames, hrg = line.split('|')
+                fmel, fspec, n_frames, hrg = line.split('|')[:4]
                 self.hrgs.append(json.loads(hrg))
         self.init_vocab()
 
@@ -91,12 +92,14 @@ if __name__ == '__main__':
     parser.add_argument('--data-dir', type=str,
                         help='Directory to raw dataset')
     parser.add_argument('--old-meta', type=str,
-                        help='previous old meta file', required=True)
+                        help='previous old meta file', required=False)
     parser.add_argument('--n-jobs', default=cpu_count(), type=int,
                         help='Number of jobs used for feature extraction', required=False)
     parser.add_argument('--ratio-test', default=0.1, 
                         type=float, help='ratio of testing examples', required=False)
     parser.add_argument('--config', type=str,
                         help='configure file', required=True)
+    parser.add_argument('--only-vocab-creation', type=bool,
+                    help='only create vocab and not the audio files, splits', required=False, default=True)
     args = parser.parse_args()
-    preprocess_hrg(args)
+    preprocess_hrg(args, only_vocab_creation=args.only_vocab_creation)

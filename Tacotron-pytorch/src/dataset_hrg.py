@@ -6,7 +6,10 @@ import torch
 from collections import Counter
 from functools import partial
 from torch_geometric.data import Data, Dataset
+from src.dataset import VocabAddInfo
 import torch_geometric
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
@@ -81,20 +84,20 @@ class HRG:
     Currently just a wrapper around json
     """
 
-    def __init__(self, hrg, vocab: HRGVocab):
+    def __init__(self, hrg_json, vocab: HRGVocab):
         """
 
         Args:
             hrg_json ([dict or str]): [HRG in json format. If str, it should be a path to the json containing hrg]
             vocab ([HRGVocab]): [a vocab object that can be used to map the symbols in this HRG]
         """
-        if isinstance(hrg, dict):
-            self.hrg_json = hrg
-        elif isinstance(hrg, str):
-            with open(hrg, "r") as f:
+        if isinstance(hrg_json, list):
+            self.hrg_json = hrg_json
+        elif isinstance(hrg_json, str):
+            with open(hrg_json, "r") as f:
                 self.hrg_json = json.load(f)
         else:
-            raise Exception(f"Unknown type {type(hrg)}")
+            raise Exception(f"Unknown type {type(hrg_json)}")
     
         self.vocab = vocab
 
@@ -220,7 +223,7 @@ class MyDatasetAddInfo(Dataset):
         # make vocab for each additional info
         self.add_info_vocab = {}
         for h in headers:
-            self.add_info_vocab[h] = Vocab.from_dir(data_dir, h)
+            self.add_info_vocab[h] = VocabAddInfo.from_dir(data_dir, h)
         # Convert to ids
         self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
         # get max vocab size for all the additional info
@@ -250,6 +253,7 @@ class MyDatasetAddInfo(Dataset):
         return len(self.X)
 
 
+
 def collate_fn(batch, r):
     """
     returns:
@@ -259,7 +263,6 @@ def collate_fn(batch, r):
     spec_batch: torch.FloatTensor (bsz * max_tgt_len)
     """
     num_inputs = len(batch[0])
-
     x_batch = [x[0] for x in batch]
 
     n_phone_nodes = [len(x[0].syll_nodes) for x in batch]
@@ -281,6 +284,6 @@ def collate_fn(batch, r):
 
     if num_inputs > 3:
         add_info = [x[-1] for x in batch]
-        return x_batch, input_lengths, mel_batch, spec_batch, add_info
+        return x_batch, n_phone_nodes, mel_batch, spec_batch, add_info
     else:
-        return x_batch, input_lengths, mel_batch, spec_batch, None
+        return x_batch, n_phone_nodes, mel_batch, spec_batch, None

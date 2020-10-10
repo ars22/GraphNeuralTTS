@@ -22,6 +22,7 @@ model:
         n_vocab: 250 # Use a larger vocab size is ok.
         embedding_size: 256
         add_info_embedding_size: 32
+        gcn_hidden_size: 256
         mel_size: 80
         linear_size: 1025
         r: 5

@@ -203,7 +203,7 @@ class MelDecoder(nn.Module):
             nn.GRUCell(256 + 128 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
             BahdanauAttn(256 + self.concatenated_additional_embedding_size))
         self.memory_layer = nn.Linear(
-            256 + concatenated_additional_embedding_size, 256 + concatenated_additional_embedding_size, bias=False)
+            256 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size, bias=False)
         # RNN decoder in the original paper
         self.pre_rnn_dec_proj = nn.Linear(512 + 2*self.concatenated_additional_embedding_size, 256)
         self.rnns_dec = nn.ModuleList(
@@ -324,7 +324,7 @@ class Tacotron(nn.Module):
             for header in self.add_info_headers:
                 add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
                 additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).expand_as(encoder_outputs))
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
             encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
             # encoder_outputs now has concatenated embeddings
 

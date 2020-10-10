@@ -42,7 +42,7 @@ def _pad_2d(x, max_len):
             mode="constant", constant_values=0)
     return x
 
-class Vocab:
+class VocabAddInfo:
     def __init__(self, id2tok, tok2id):
         self.id2tok = id2tok
         self.tok2id = tok2id
@@ -69,7 +69,7 @@ class Vocab:
             id2tok = json.load(f)
         with open(f"{pth}/{entity}tok2id.json", "r") as f:
             tok2id = json.load(f)
-        return Vocab(id2tok=id2tok, tok2id=tok2id)
+        return VocabAddInfo(id2tok=id2tok, tok2id=tok2id)
 
     def __len__(self):
         return len(self.tok2id)
@@ -140,7 +140,7 @@ class MyDatasetAddInfo(Dataset):
         # make vocab for each additional info
         self.add_info_vocab = {}
         for h in headers:
-            self.add_info_vocab[h] = Vocab.from_dir(data_dir, h)
+            self.add_info_vocab[h] = VocabAddInfo.from_dir(data_dir, h)
         # Convert to ids
         self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
         # get max vocab size for all the additional info
