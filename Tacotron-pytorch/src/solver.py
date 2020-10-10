@@ -5,8 +5,8 @@ import json
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
-from .dataset import getDataLoader
-from .module import Tacotron
+from .dataset_hrg import getDataLoader
+from .module_hrg import Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
 from torch_geometric.data import Batch

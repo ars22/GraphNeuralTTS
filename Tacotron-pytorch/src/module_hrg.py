@@ -106,24 +106,49 @@ class EmbeddingHRG(nn.Module):
         return torch.stack(res ,dim=0)
 
 
+
+
 class Tacotron(nn.Module):
-    def __init__(self, n_vocab, hidden_size=256, embedding_size=256, mel_size=80, linear_size=1025, r=5):
+    def __init__(self, n_vocab, embedding_size=256, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
+            add_info_headers=[], n_add_info_vocab=0):
         super(Tacotron, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
+        # main embedding for HRGs
         self.embedding = EmbeddingHRG(n_vocab, hidden_size=hidden_size, embedding_size=embedding_size)
+        # if there are additional headers, create an embedding file for each
+        self.add_info_headers = add_info_headers
+        self.add_info_embedding = nn.Sequential(OrderedDict([
+            (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
+            for header in self.add_info_headers
+        ]))
         # initialization
-        
-        self.encoder = Encoder(hidden_size) 
-        self.mel_decoder = MelDecoder(mel_size, r)
+        self.embedding.weight.data.normal_(0, 0.3)
+        for header in self.add_info_headers:
+            self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
+        # the embedding size scales with more additional headers
+        self.encoder = Encoder(embedding_size)
+        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
-    def forward(self, texts, melspec=None, text_lengths=None):
+    def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
+        batch_size = texts.size(0)
         txt_feat = self.embedding(texts)
-        batch_size = txt_feat.size(0)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
+
+        # if there are additional headers like speaker or accent we
+        # append them to encoder output
+        if len(self.add_info_headers):
+            additional_embeddings = []
+            for header in self.add_info_headers:
+                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
+                additional_embeddings.append(
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).expand_as(encoder_outputs))
+            encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
+            # encoder_outputs now has concatenated embeddings
+
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
         # Reshape mel_outputs
         # -> (batch_size, timesteps (decoder), mel_size)
@@ -131,3 +156,4 @@ class Tacotron(nn.Module):
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
         return mel_outputs, linear_outputs, alignments
+
