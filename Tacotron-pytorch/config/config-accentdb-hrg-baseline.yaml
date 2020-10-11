@@ -31,7 +31,7 @@ solver:
     # Data config. 
     meta_path: {'train': 'training-accentdb-char-baseline-with-additional-info/meta_train_hrg.txt', 'test': 'training-accentdb-char-baseline-with-additional-info/meta_test_hrg.txt'}
     data_dir: 'training-accentdb-char-baseline-with-additional-info'
-    n_jobs: 4
+    n_jobs: 0
     # Training config.
     batch_size: 32
     grad_clip: 1.0
