@@ -167,7 +167,7 @@ class MyDataset(Dataset):
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
-                fmel, fspec, n_frames, hrg = line.split('|')
+                fmel, fspec, n_frames, hrg = line.split('|')[:4]
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
