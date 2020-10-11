@@ -8,8 +8,8 @@ from functools import partial
 from torch_geometric.data import Data, Dataset
 from src.dataset import VocabAddInfo
 import torch_geometric
-import torch.multiprocessing
-torch.multiprocessing.set_sharing_strategy('file_system')
+#import torch.multiprocessing
+#torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
