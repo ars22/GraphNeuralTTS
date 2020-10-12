@@ -1,10 +1,10 @@
-META_TRAIN_IN = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/train_split.txt'
-META_TEST_IN = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/test_split.txt'
+META_TRAIN_IN = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/data_splits/accent_db/train_split_native.txt'
+META_TEST_IN = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/data_splits/accent_db/test_split_native.txt'
 
-META_TRAIN_OUT = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/meta_train_hrg.txt'
-META_TEST_OUT = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/meta_test_hrg.txt'
+META_TRAIN_OUT = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/data_splits/accent_db/meta_train_native.txt'
+META_TEST_OUT = '/home1/asetlur/GraphNeuralTTS/Tacotron-pytorch/data_splits/accent_db/meta_test_native.txt'
 
-METADATA = '/home1/asetlur/datasets/accent_db/metadata_hrg.csv'
+METADATA = '/home1/asetlur/datasets/accent_db/metadata.csv'
 
 # load metadata
 metadata = {}
