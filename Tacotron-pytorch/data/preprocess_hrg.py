@@ -100,6 +100,6 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str,
                         help='configure file', required=True)
     parser.add_argument('--only-vocab-creation', type=bool,
-                    help='only create vocab and not the audio files, splits', required=False, default=True)
+                    help='only create vocab and not the audio files, splits', required=False, default=False)
     args = parser.parse_args()
     preprocess_hrg(args, only_vocab_creation=args.only_vocab_creation)

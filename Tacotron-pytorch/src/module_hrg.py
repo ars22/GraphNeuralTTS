@@ -110,10 +110,10 @@ class EmbeddingHRG(nn.Module):
 
 
 
-class Tacotron(nn.Module):
+class TacotronHRG(nn.Module):
     def __init__(self, n_vocab, embedding_size=256, gcn_hidden_size=128, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
             add_info_headers=[], n_add_info_vocab=0):
-        super(Tacotron, self).__init__()
+        super(TacotronHRG, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
         # main embedding for HRGs

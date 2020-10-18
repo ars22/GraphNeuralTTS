@@ -6,10 +6,12 @@ import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
 from .dataset_hrg import getDataLoader
-from .module_hrg import Tacotron
+from .module_hrg import TacotronHRG
+# from .dataset import getDataLoader
+# from .module import Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
-from torch_geometric.data import Batch
+# from torch_geometric.data import Batch
 
 class Solver(object):
     """Super class Solver for all kinds of tasks (train, test)"""
@@ -89,7 +91,7 @@ class Trainer(Solver):
         """Build model"""
         self.verbose("Build model")
         
-        self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
+        self.model = TacotronHRG(**self.config['model']['tacotron']).to(device=self.device)
         self.criterion = torch.nn.L1Loss()
 
         # Optimizer
