@@ -275,6 +275,20 @@ class Trainer(Solver):
                 self.log_writer.add_figure('spectrogram-%d' % curr_b, fig_spec, self.step)
                 self.log_writer.add_figure('attn-%d' % curr_b, fig_attn, self.step)
                 self.log_writer.add_audio('wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
+            
+                # Decode non-teacher-forced
+                mel_outputs, linear_outputs, attn = self.model([txt[0]], add_info=[add_info[0]] if add_info else None)
+                fig_spec = make_spec_figure(linear_outputs[0].cpu().numpy(), self.audio_processor)
+                fig_attn = make_attn_figure(attn[0].cpu().numpy())
+                # Predicted audio signal
+                waveform = self.audio_processor.inv_spectrogram(linear_outputs[0].cpu().numpy().T)
+                waveform = np.clip(waveform, -1, 1)
+                # Tensorboard
+                self.log_writer.add_figure('non-teacher-forced-spectrogram-%d' % curr_b, fig_spec, self.step)
+                self.log_writer.add_figure('non-teacher-forced-attn-%d' % curr_b, fig_attn, self.step)
+                self.log_writer.add_audio('non-teacher-forced-wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
+            
+    
             # Perform Griffin-Lim to generate waveform: "GL"
             header = '[GL-{}/{}]'.format(curr_b + 1, NUM_GL) if curr_b < NUM_GL else '[VAL-{}/{}]'.format(curr_b + 1, len(self.data_va))
             # Terminal log

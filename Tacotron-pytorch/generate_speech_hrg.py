@@ -4,7 +4,8 @@ import torch
 import numpy as np
 from src.module_hrg import Tacotron
 from src.utils import AudioProcessor
-from dataset_hrg import HRGVocab, HRG
+from dataset_hrg import HRGVocab, HRG, VocabAddInfo
+import json
 
 def generate_speech(args):
     print(args)
@@ -13,13 +14,25 @@ def generate_speech(args):
     graph = HRG(args.hrg_file, vocab=vocab).to_pytorch_geom_graph()
     print(f"Vocab size: {len(vocab)}")
 
+    # if there is additional speaker/accent info
+    if args.add_info:
+        add_info_dicts = [json.loads(args.add_info)]
+        headers = list(add_info_dicts[0].keys())
+        # make vocab for each additional info
+        add_info_vocab = {}
+        for h in headers:
+            add_info_vocab[h] = VocabAddInfo.from_dir(data_dir, h)
+        add_info = [ {h:add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in add_info_dicts ]
+    else:
+        add_info = None
+
     # read model
     config = yaml.load(open(args.config, 'r'))
     model = load_ckpt(config, vocab=vocab, ckpt_path=args.checkpoint_path).cuda()
    
     # Decode
     with torch.no_grad():
-        mel, spec, attn = model([graph])
+        mel, spec, attn = model([graph], add_info=add_info)
     # Generate wav file
     ap = AudioProcessor(**config['audio'])
     wav = ap.inv_spectrogram(spec[0].cpu().numpy().T)
