@@ -32,8 +32,9 @@ if __name__ == '__main__':
 
     # Train
     from src.solver import Trainer as Solver
+    # from src.solver_hrg import Trainer as Solver
     solver = Solver(config, args)
     solver.load_data()
     solver.build_model()
     solver.exec()
-
+    # solver.embed_similarity()
