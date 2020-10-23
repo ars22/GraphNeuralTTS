@@ -8,6 +8,7 @@ from functools import partial
 from torch_geometric.data import Data, Dataset
 from src.dataset import VocabAddInfo
 import torch_geometric
+from tqdm import tqdm
 #import torch.multiprocessing
 #torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -21,13 +22,14 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
     else:
         raise NotImplementedError
 
-    if "add_info_headers" in kwargs:
-        add_info_headers = kwargs["add_info_headers"]
-    
+    vocab = kwargs["vocab"] if "vocab" in kwargs else None
+    add_info_vocab = kwargs["add_info_vocab"] if "add_info_vocab" in kwargs else None
+    add_info_headers = kwargs["add_info_headers"] if "add_info_headers" in kwargs else None
+
     if len(add_info_headers):
-        DS = MyDatasetAddInfo(meta_path, data_dir)
+        DS = MyDatasetAddInfo(meta_path, data_dir, vocab=vocab, add_info_vocab=add_info_vocab, add_info_headers=add_info_headers)
     else:
-        DS = MyDataset(meta_path, data_dir)
+        DS = MyDataset(meta_path, data_dir, vocab=vocab)
         
     DL = torch.utils.data.DataLoader(
         DS, batch_size=batch_size, shuffle=shuffle, drop_last=False,
@@ -47,36 +49,52 @@ def _pad_2d(x, max_len):
     return x
 
 
+
 class HRGVocab:
-    def __init__(self, id2tok, tok2id):
-        self.id2tok = id2tok
-        self.tok2id = tok2id
-        self.n_vocab = len(self.id2tok)
-        assert len(id2tok) == len(tok2id), "Invalid vocab"
+
+    def __init__(self, hrg_jsons):
+        self.hrg_jsons = hrg_jsons
+        self.init_vocab()
+
+
+    def init_vocab(self):
+        tokens = Counter(list(self.get_tokens_from_hrg()))
+        self.tok2count = {tok: count for tok, count in tokens.items() if count > 1}
+        tokens = [w[0] for w in tokens.items() if w[1] > 1]
+        tokens.extend([str(i) for i in range(20)])  # position
+        tokens.extend(["<W>", "<SYLL>", "<UNK>"])
+        self.tok2id = {w: i for i, w in enumerate(tokens)}
+        self.id2tok = {i: w for w, i in self.tok2id.items()}
+        self.n_vocab = len(self.tok2id)
+
+
+    def get_tokens_from_hrg(self):
+        def _get_tokens_from_word_rep(word_rep):
+            tokens = []
+            tokens.append(word_rep["word"])
+            for daughter in word_rep["daughters"]:
+                syllnode = []
+                for syll in daughter:
+                    tokens.append(syll["syll"])
+                    syllnode.append(syll["syll"])
+                tokens.append("".join(syllnode))
+            return tokens
+        
+        tokens = []
+        for hrg_json in tqdm(self.hrg_jsons, total=len(self.hrg_jsons), desc="Parsing HRGs"):
+            for word_rep in hrg_json:
+                tokens.extend(_get_tokens_from_word_rep(word_rep))
+        return tokens
 
     def get_tok2id(self, tok):
         if tok in self.tok2id:
             return self.tok2id[tok]
         return self.tok2id["<UNK>"]
 
-    @staticmethod
-    def from_dir(pth):
-        """Reads and initializes vocab from a directory
-
-        Args:
-            pth ([type]): [path that has id2tok and tok2id jsons.]
-
-        Returns:
-            [type]: [HRGVocab]
-        """
-        with open(f"{pth}/id2tok.json", "r") as f:
-            id2tok = json.load(f)
-        with open(f"{pth}/tok2id.json", "r") as f:
-            tok2id = json.load(f)
-        return HRGVocab(id2tok=id2tok, tok2id=tok2id)
-
     def __len__(self):
-        return len(self.tok2id)
+        return self.n_vocab
+
+
 
 
 class HRG:
@@ -156,7 +174,7 @@ class MyDataset(Dataset):
     """Graph Dataset
     """
 
-    def __init__(self, meta_path, data_dir):
+    def __init__(self, meta_path, data_dir, vocab=None):
         # Load meta
         # ---------
         # text: texts
@@ -173,7 +191,12 @@ class MyDataset(Dataset):
                 meta['spec'].append(fspec)
 
         # make vocab
-        self.vocab = HRGVocab.from_dir(data_dir)
+        if vocab is None:
+            print("Creating HRG Vocab")
+            self.vocab = HRGVocab(hrg_jsons=[json.loads(hrg) for hrg in meta['hrg']])
+        else:
+            print("Reusing HRG Vocab")
+            self.vocab = vocab
         self.n_vocab = len(self.vocab)
 
         # Read HRGs, convert each HRG to a Pytorch Geom object
@@ -195,16 +218,19 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.X)
 
+
+
 class MyDatasetAddInfo(Dataset):
     """Dataset
     """
-    def __init__(self, meta_path, data_dir):
+    def __init__(self, meta_path, data_dir, add_info_headers, vocab=None, add_info_vocab=None):
         # Load meta
         # ---------
         # text: texts
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
-        #
+        # add_info_vocab: None only for Train
+
         meta = {'hrg':[], 'mel': [], 'spec': [], 'add_info': []}
         with open(meta_path) as f:
             for line in f.readlines():
@@ -218,19 +244,30 @@ class MyDatasetAddInfo(Dataset):
 
         # Separate text and additional info
         self.add_info = [ json.loads(t) for t in meta['add_info'] ]
-        headers = list(self.add_info[0].keys())
+        headers = add_info_headers
             
         # make vocab for each additional info
-        self.add_info_vocab = {}
-        for h in headers:
-            self.add_info_vocab[h] = VocabAddInfo.from_dir(data_dir, h)
+        if add_info_vocab is None:
+            print("Creating add_info vocab")
+            self.add_info_vocab = {}
+            for h in headers:
+                self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
+        else:
+            print("Reusing add_info vocab")
+            self.add_info_vocab = add_info_vocab
+        
         # Convert to ids
         self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
         # get max vocab size for all the additional info
         self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
 
         # make vocab for HRG
-        self.vocab = HRGVocab.from_dir(data_dir)
+        if vocab is None:
+            print("Creating HRG Vocab")
+            self.vocab = HRGVocab(hrg_jsons=[json.loads(hrg) for hrg in meta['hrg']])
+        else:
+            print("Reusing HRG Vocab")
+            self.vocab = vocab
         self.n_vocab = len(self.vocab)
 
         # Read HRGs, convert each HRG to a Pytorch Geom object
@@ -281,7 +318,7 @@ def collate_fn(batch, r):
     c = np.array([_pad_2d(x[2], max_target_len) for x in batch],
                  dtype=np.float32)
     spec_batch = torch.FloatTensor(c)
-
+    
     if num_inputs > 3:
         add_info = [x[-1] for x in batch]
         return x_batch, n_phone_nodes, mel_batch, spec_batch, add_info

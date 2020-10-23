@@ -6,6 +6,7 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 from .symbols import txt2seq
 from functools import partial
+from tqdm import tqdm
 import json
 
 def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **kwargs):
@@ -17,11 +18,12 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
     else:
         raise NotImplementedError
     
-    if "add_info_headers" in kwargs:
-        add_info_headers = kwargs["add_info_headers"]
-    
+    vocab = kwargs["vocab"] if "vocab" in kwargs else None
+    add_info_vocab = kwargs["add_info_vocab"] if "add_info_vocab" in kwargs else None
+    add_info_headers = kwargs["add_info_headers"] if "add_info_headers" in kwargs else None
+
     if len(add_info_headers):
-        DS = MyDatasetAddInfo(meta_path, data_dir)
+        DS = MyDatasetAddInfo(meta_path, data_dir, add_info_vocab=add_info_vocab, add_info_headers=add_info_headers)
     else:
         DS = MyDataset(meta_path, data_dir)
 
@@ -55,20 +57,26 @@ class VocabAddInfo:
         return self.tok2id["<UNK>"]
 
     @staticmethod
-    def from_dir(pth, entity=""):
+    def from_dataset(dataset, entity):
         """Reads and initializes vocab from a directory
 
         Args:
-            pth ([type]): [path that has id2tok and tok2id jsons.]
+            dataset ([type]): [list of dictionaries of additional info]
+            entity: key for additional info (speaker/accent)
 
         Returns:
             [type]: [HRGVocab]
         """
-        entity = entity + "_" if entity != "" else entity
-        with open(f"{pth}/{entity}id2tok.json", "r") as f:
-            id2tok = json.load(f)
-        with open(f"{pth}/{entity}tok2id.json", "r") as f:
-            tok2id = json.load(f)
+        tok2id = {}
+        for add_info_dict in dataset:
+            if add_info_dict[entity] not in tok2id:
+                tok2id[add_info_dict[entity]] = len(tok2id)
+        id2tok = {v: k for k,v in tok2id.items()}
+
+        print("Add info:", entity)
+        print("id2tok", id2tok)
+        print("tok2id", tok2id)
+    
         return VocabAddInfo(id2tok=id2tok, tok2id=tok2id)
 
     def __len__(self):
@@ -102,6 +110,10 @@ class MyDataset(Dataset):
         # Text to id sequence
         self.X = [txt2seq(x) for x in self.X]
 
+        # dummy vocab (since char model doesnt need one)
+        self.vocab = None
+        print("Char model using text2seq function in symbols. No vocab needed")
+
     def __getitem__(self, idx):
         item = (self.X[idx],
                 np.load(self.Y_mel[idx]),
@@ -114,7 +126,7 @@ class MyDataset(Dataset):
 class MyDatasetAddInfo(Dataset):
     """Dataset
     """
-    def __init__(self, meta_path, data_dir):
+    def __init__(self, meta_path, data_dir, add_info_headers, add_info_vocab=None):
         # Load meta
         # ---------
         # text: texts
@@ -135,14 +147,20 @@ class MyDatasetAddInfo(Dataset):
         # Separate text and additional info
         self.X = meta['text']
         self.add_info = [ json.loads(t) for t in meta['add_info'] ]
-        headers = list(self.add_info[0].keys())
-            
+        headers = add_info_headers
+
         # make vocab for each additional info
-        self.add_info_vocab = {}
-        for h in headers:
-            self.add_info_vocab[h] = VocabAddInfo.from_dir(data_dir, h)
+        if add_info_vocab is None:
+            print("Creating add_info vocab")
+            self.add_info_vocab = {}
+            for h in headers:
+                self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
+        else:
+            print("Reusing add_info vocab")
+            self.add_info_vocab = add_info_vocab
+         
         # Convert to ids
-        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
+        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in headers} for t in self.add_info ]
         # get max vocab size for all the additional info
         self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
 
@@ -150,6 +168,10 @@ class MyDatasetAddInfo(Dataset):
         self.Y_spec = [os.path.join(data_dir, f) for f in meta['spec']]
         self.X = [txt2seq(x) for x in meta['text']]
         assert len(self.X) == len(self.Y_mel) == len(self.Y_spec) == len(self.add_info)
+
+        # dummy vocab (since char model doesnt need one)
+        self.vocab = None
+        print("Char model using text2seq function in symbols. No vocab needed")
         
     def __getitem__(self, idx):
         item = (self.X[idx],

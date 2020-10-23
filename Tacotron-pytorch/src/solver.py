@@ -62,6 +62,7 @@ class Trainer(Solver):
         self.verbose("Load data")
 
         _config = self.config['solver']
+        print("--" * 10, "Training Data", "--" * 10)
         # Training dataset
         self.data_tr = getDataLoader(
                 mode='train',
@@ -72,10 +73,7 @@ class Trainer(Solver):
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu,
                 add_info_headers=self.add_info_headers)
-        if hasattr(self.data_tr.dataset, 'n_vocab'):
-            self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
-        if len(self.add_info_headers):
-            self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.n_add_info_vocab
+        print("--" * 10, "Validation Data", "--" * 10)
         # Validation dataset
         self.data_va = getDataLoader(
                 mode='test',
@@ -85,7 +83,17 @@ class Trainer(Solver):
                 r=self.config['model']['tacotron']['r'],
                 n_jobs=_config['n_jobs'],
                 use_gpu=self.use_gpu,
-                add_info_headers=self.add_info_headers)
+                add_info_headers=self.add_info_headers,
+                vocab=self.data_tr.dataset.vocab,
+                add_info_vocab=self.data_tr.dataset.add_info_vocab 
+                    if self.add_info_headers else None)
+
+        # vocab sizes
+        if hasattr(self.data_tr.dataset, 'n_vocab'):
+            self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
+        if len(self.add_info_headers):
+            self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.n_add_info_vocab
+        
 
     def build_model(self):
         """Build model"""
