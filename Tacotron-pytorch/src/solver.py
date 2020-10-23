@@ -5,13 +5,13 @@ import json
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
-from .dataset_hrg import getDataLoader
-from .module_hrg import TacotronHRG
-# from .dataset import getDataLoader
-# from .module import Tacotron
+from .dataset import getDataLoader
+from .module import Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
-# from torch_geometric.data import Batch
+from torch_geometric.data import Batch
+from matplotlib import pyplot as plt 
+import seaborn as sns
 
 class Solver(object):
     """Super class Solver for all kinds of tasks (train, test)"""
@@ -98,8 +98,8 @@ class Trainer(Solver):
     def build_model(self):
         """Build model"""
         self.verbose("Build model")
-        
-        self.model = TacotronHRG(**self.config['model']['tacotron']).to(device=self.device)
+
+        self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
         self.criterion = torch.nn.L1Loss()
 
         # Optimizer
@@ -320,5 +320,25 @@ class Trainer(Solver):
             })
         return linear_loss_avg
 
+    def embed_similarity(self):
 
-
+        self.model.embedding.eval()
+        diff_phoneme_feat = []
+        for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
+            syll_nodes = [ d.syll_nodes for d in txt ]
+            prev_syll_nodes = [ np.insert(s[:-1], 0, -1) for s in syll_nodes ]
+            word_bound = [ np.append(np.where((s-p)!=1)[0], len(s)) for (s,p) in zip(syll_nodes, prev_syll_nodes) ]
+            text_feat = self.model.embedding(txt).detach()     # B x S x D
+            word_feat = []
+            for i,word in enumerate(word_bound):
+                for w,w1 in zip(word[:-1], word[1:]):
+                    word_feat.append(text_feat[i][w:w1])
+            avg_word_feat = [ wf.mean(axis=0) for wf in word_feat ]
+            diff_word_feat = [ (torch.sum(torch.abs(wf - awf)**2,axis=-1)**(1./2)).to('cpu') for wf,awf in zip(word_feat, avg_word_feat) ]
+            diff_phoneme_feat.append(np.concatenate(diff_word_feat).ravel())
+        diff_phoneme_feat = np.concatenate(diff_phoneme_feat).ravel()
+        print ("Number of phonemes in total: %d" % len(diff_phoneme_feat))
+        sns.kdeplot(diff_phoneme_feat, shade=True, clip=(0,0.5))
+        plt.savefig('plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.density.png')
+        plt.hist(diff_phoneme_feat, bins=20, range=(0,0.25))
+        plt.savefig('plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.hist.png')
