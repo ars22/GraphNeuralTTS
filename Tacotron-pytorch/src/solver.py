@@ -5,13 +5,21 @@ import json
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
-from .dataset import getDataLoader
-from .module import Tacotron
+# from .dataset_hrg import getDataLoader
+# from .module_hrg import TacotronHRG as Tacotron
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
 from torch_geometric.data import Batch
 from matplotlib import pyplot as plt 
-import seaborn as sns
+
+# Imports based on HRG or No HRG
+MODE = "HRG"
+if MODE == "HRG":
+    from .dataset_hrg import getDataLoader
+    from .module_hrg import TacotronHRG as Tacotron
+else:
+    from .dataset import getDataLoader
+    from .module import Tacotron
 
 class Solver(object):
     """Super class Solver for all kinds of tasks (train, test)"""
@@ -35,6 +43,7 @@ class Trainer(Solver):
     """Handle training task"""
     def __init__(self, config, args):
         super(Trainer, self).__init__(config, args)
+        
         # Best validation error, initialize it with a large number
         self.best_val_err = 1e10
         # Logger Settings
@@ -85,8 +94,7 @@ class Trainer(Solver):
                 use_gpu=self.use_gpu,
                 add_info_headers=self.add_info_headers,
                 vocab=self.data_tr.dataset.vocab,
-                add_info_vocab=self.data_tr.dataset.add_info_vocab 
-                    if self.add_info_headers else None)
+                add_info_vocab=self.data_tr.dataset.add_info_vocab)
 
         # vocab sizes
         if hasattr(self.data_tr.dataset, 'n_vocab'):
@@ -211,7 +219,9 @@ class Trainer(Solver):
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),
-            "global_step": self.step
+            "global_step": self.step,
+            "vocab": self.data_tr.dataset.vocab,
+            "add_info_vocab": self.data_tr.dataset.add_info_vocab,
         }, ckpt_path)
         self.verbose("@ step {} => saved checkpoint: {}".format(self.step, ckpt_path))
 
@@ -220,7 +230,34 @@ class Trainer(Solver):
         ckpt = torch.load(self.checkpoint_path)
         self.model.load_state_dict(ckpt['state_dict'])
         self.optim.load_state_dict(ckpt['optimizer'])
+        vocab = ckpt['vocab']
+        add_info_vocab = ckpt['add_info_vocab']
         self.step = ckpt['global_step']
+
+        self.data_tr = getDataLoader(
+            mode='train',
+            meta_path=_config['meta_path']['train'],
+            data_dir=_config['data_dir'],
+            batch_size=_config['batch_size'],
+            r=self.config['model']['tacotron']['r'],
+            n_jobs=_config['n_jobs'],
+            use_gpu=self.use_gpu,
+            add_info_headers=self.add_info_headers,
+            vocab=vocab,
+            add_info_vocab=add_info_vocab)
+
+        self.data_va = getDataLoader(
+            mode='test',
+            meta_path=_config['meta_path']['test'],
+            data_dir=_config['data_dir'],
+            batch_size=_config['batch_size'],
+            r=self.config['model']['tacotron']['r'],
+            n_jobs=_config['n_jobs'],
+            use_gpu=self.use_gpu,
+            add_info_headers=self.add_info_headers,
+            vocab=vocab,
+            add_info_vocab=add_info_vocab)
+
 
     def write_log(self, val_name, val_dict):
         if type(val_dict) == dict:

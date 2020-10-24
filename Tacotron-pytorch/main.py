@@ -9,6 +9,7 @@ matplotlib.use('Agg')
 if __name__ == '__main__':
     # Arguments
     parser = argparse.ArgumentParser(description='Tacotron')
+    parser.add_argument('--hrg', action='store_true', help='run tacotron hrg', default=False)
     parser.add_argument('--config', type=str, help='Path to experiment config file')
     parser.add_argument('--log-dir', default='log/', type=str, help='Logging path', required=False)
     parser.add_argument('--checkpoint-dir', type=str, help='Checkpoint/Result path', required=True)
@@ -30,11 +31,14 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
+    # 
+
     # Train
     from src.solver import Trainer as Solver
     # from src.solver_hrg import Trainer as Solver
     solver = Solver(config, args)
-    solver.load_data()
+    if not args.checkpoint_path:
+        #  if the checkpoint is present, data is not created from scratch
+        solver.load_data()
     solver.build_model()
     solver.exec()
-    # solver.embed_similarity()

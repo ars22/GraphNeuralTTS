@@ -112,6 +112,7 @@ class MyDataset(Dataset):
 
         # dummy vocab (since char model doesnt need one)
         self.vocab = None
+        self.add_info_vocab = None
         print("Char model using text2seq function in symbols. No vocab needed")
 
     def __getitem__(self, idx):

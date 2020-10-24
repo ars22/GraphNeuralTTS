@@ -27,7 +27,8 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
     add_info_headers = kwargs["add_info_headers"] if "add_info_headers" in kwargs else None
 
     if len(add_info_headers):
-        DS = MyDatasetAddInfo(meta_path, data_dir, vocab=vocab, add_info_vocab=add_info_vocab, add_info_headers=add_info_headers)
+        DS = MyDatasetAddInfo(meta_path, data_dir, vocab=vocab,
+             add_info_vocab=add_info_vocab, add_info_headers=add_info_headers)
     else:
         DS = MyDataset(meta_path, data_dir, vocab=vocab)
         
@@ -198,6 +199,7 @@ class MyDataset(Dataset):
             print("Reusing HRG Vocab")
             self.vocab = vocab
         self.n_vocab = len(self.vocab)
+        self.add_info_vocab = None
 
         # Read HRGs, convert each HRG to a Pytorch Geom object
         self.hrgs = [HRG(hrg_json=json.loads(hrg), vocab=self.vocab)
