@@ -51,7 +51,6 @@ def generate_speech(args):
                 graphs = [graphs[idx] for idx in indices]
             else:
                 graphs = graphs[indices]
-                graphs = graphs.to(device=self.device)
 
             mel, spec, attn = model(graphs, text_lengths=sorted_lengths, add_info=add_info)
             # Generate wav file
@@ -66,10 +65,12 @@ def load_ckpt(config, ckpt_path):
     
     vocab = ckpt['vocab']
     add_info_vocab = ckpt['add_info_vocab']
+    print(ckpt['add_info_vocab'])
     if MODE == "HRG":
         config['model']['tacotron']['n_vocab'] = vocab.n_vocab
         if add_info_vocab:
-            config['model']['tacotron']['n_add_info_vocab'] = add_info_vocab.n_add_info_vocab
+            config['model']['tacotron']['n_add_info_vocab'] = max([add_info_vocab[h].n_vocab for h in add_info_vocab])
+            config['model']['tacotron']['add_info_headers'] = list(add_info_vocab.keys())
     model = Tacotron(**config['model']['tacotron'])
     model.load_state_dict(ckpt['state_dict'])
     # This yeilds the best performance, not sure why
@@ -92,9 +93,6 @@ if __name__ == '__main__':
     parser.add_argument('--no-msg', action='store_true', help='Hide all messages')
     
     args = parser.parse_args()
-    # Train
-    from src.solver import Trainer as Solver
-    
     
     generate_speech(args)
 
