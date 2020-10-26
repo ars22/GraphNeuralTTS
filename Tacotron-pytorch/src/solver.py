@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 
 # Imports based on HRG or No HRG
 MODE = "HRG"
+print("MODE : ", MODE)
 if MODE == "HRG":
     from .dataset_hrg import getDataLoader
     from .module_hrg import TacotronHRG as Tacotron
@@ -228,19 +229,27 @@ class Trainer(Solver):
     def load_ckpt(self):
         self.verbose("Load checkpoint from: {}".format(self.checkpoint_path))
         ckpt = torch.load(self.checkpoint_path)
-        self.model.load_state_dict(ckpt['state_dict'])
-        self.optim.load_state_dict(ckpt['optimizer'])
         vocab = ckpt['vocab']
         add_info_vocab = ckpt['add_info_vocab']
+        
+        if MODE == "HRG":
+            self.config['model']['tacotron']['n_vocab'] = vocab.n_vocab
+            if add_info_vocab:
+                self.config['model']['tacotron']['n_add_info_vocab'] = add_info_vocab.n_add_info_vocab
+            self.model = Tacotron(**self.config['model']['tacotron'])
+    
+        self.model.load_state_dict(ckpt['state_dict'])
+        self.model = self.model.to(device=self.device)
+        self.optim.load_state_dict(ckpt['optimizer'])
         self.step = ckpt['global_step']
 
         self.data_tr = getDataLoader(
             mode='train',
-            meta_path=_config['meta_path']['train'],
-            data_dir=_config['data_dir'],
-            batch_size=_config['batch_size'],
+            meta_path=self.config['solver']['meta_path']['train'],
+            data_dir=self.config['solver']['data_dir'],
+            batch_size=self.config['solver']['batch_size'],
             r=self.config['model']['tacotron']['r'],
-            n_jobs=_config['n_jobs'],
+            n_jobs=self.config['solver']['n_jobs'],
             use_gpu=self.use_gpu,
             add_info_headers=self.add_info_headers,
             vocab=vocab,
@@ -248,11 +257,11 @@ class Trainer(Solver):
 
         self.data_va = getDataLoader(
             mode='test',
-            meta_path=_config['meta_path']['test'],
-            data_dir=_config['data_dir'],
-            batch_size=_config['batch_size'],
+            meta_path=self.config['solver']['meta_path']['test'],
+            data_dir=self.config['solver']['data_dir'],
+            batch_size=self.config['solver']['batch_size'],
             r=self.config['model']['tacotron']['r'],
-            n_jobs=_config['n_jobs'],
+            n_jobs=self.config['solver']['n_jobs'],
             use_gpu=self.use_gpu,
             add_info_headers=self.add_info_headers,
             vocab=vocab,

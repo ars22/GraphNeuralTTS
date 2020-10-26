@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 # Imports based on HRG or No HRG
 MODE = "HRG"
+print("MODE : ", MODE)
 if MODE == "HRG":
     from src.dataset_hrg import getDataLoader
     from src.module_hrg import TacotronHRG as Tacotron
@@ -73,6 +74,7 @@ def load_ckpt(config, ckpt_path):
     model.load_state_dict(ckpt['state_dict'])
     # This yeilds the best performance, not sure why
     # model.mel_decoder.eval()
+    model.embedding.eval()
     model.encoder.eval()
     model.postnet.eval()
     return model, vocab, add_info_vocab

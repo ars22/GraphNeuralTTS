@@ -22,15 +22,14 @@ model:
         n_vocab: 250 # Use a larger vocab size is ok.
         embedding_size: 128
         add_info_embedding_size: 32
-        gcn_hidden_size: 128
         mel_size: 80
         linear_size: 1025
-        r: 5
+        r: 7
 
 solver:
     # Data config. 
-    meta_path: {'train': 'training-arcticdb/meta_train.txt', 'test': 'training-arcticdb/meta_val.txt'}
-    data_dir: 'training-arcticdb'
+    meta_path: {'train': 'training-arcticdb-hrg/meta_train.txt', 'test': 'training-arcticdb-hrg/meta_val.txt'}
+    data_dir: 'training-arcticdb-hrg'
     n_jobs: 0
     # Training config.
     batch_size: 32

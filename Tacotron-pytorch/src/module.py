@@ -291,6 +291,7 @@ class Tacotron(nn.Module):
     def __init__(self, n_vocab, embedding_size=256, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
             add_info_headers=[], n_add_info_vocab=0):
         super(Tacotron, self).__init__()
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.mel_size = mel_size
         self.linear_size = linear_size
         # main embedding for characters
@@ -312,7 +313,9 @@ class Tacotron(nn.Module):
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
-        batch_size = texts.size(0)
+        batch_size = len(texts)
+        if type(texts) == list:
+            texts = torch.stack(texts)
         txt_feat = self.embedding(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)

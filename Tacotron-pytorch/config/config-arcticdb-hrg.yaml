@@ -29,8 +29,8 @@ model:
 
 solver:
     # Data config. 
-    meta_path: {'train': 'training-arcticdb/meta_train.txt', 'test': 'training-arcticdb/meta_val.txt'}
-    data_dir: 'training-arcticdb'
+    meta_path: {'train': 'training-arcticdb-hrg/meta_train.txt', 'test': 'training-arcticdb-hrg/meta_val.txt'}
+    data_dir: 'training-arcticdb-hrg'
     n_jobs: 0
     # Training config.
     batch_size: 32

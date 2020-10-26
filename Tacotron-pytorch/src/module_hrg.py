@@ -135,7 +135,7 @@ class TacotronHRG(nn.Module):
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         txt_feat = self.embedding(texts)
-        batch_size = txt_feat.size(0)
+        batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
 
