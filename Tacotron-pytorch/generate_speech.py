@@ -10,7 +10,7 @@ import json
 from tqdm import tqdm
 
 # Imports based on HRG or No HRG
-MODE = "HRG"
+MODE = "CHAR"
 print("MODE : ", MODE)
 if MODE == "HRG":
     from src.dataset_hrg import getDataLoader
@@ -25,14 +25,15 @@ def generate_speech(args):
     
     config = yaml.load(open(args.config, 'r'))
     # read model
-    model, vocab, add_info_vocab = load_ckpt(config, ckpt_path=args.checkpoint_path)
+    model, vocab, add_info_vocab = load_ckpt(args, config, ckpt_path=args.checkpoint_path)
     model = model.cuda()
+    
     # create dataset
     inference_dataloader = getDataLoader(
         mode='test',
         meta_path=args.test_file,
         data_dir=config['solver']['data_dir'],
-        batch_size=32,
+        batch_size=40,
         r=config['model']['tacotron']['r'],
         n_jobs=config['solver']['n_jobs'],
         use_gpu=args.gpu,
@@ -51,28 +52,35 @@ def generate_speech(args):
                 graphs = [graphs[idx] for idx in indices]
             else:
                 graphs = graphs[indices]
-
+                graphs = graphs.to(device=torch.device('cuda') if args.gpu else torch.device('cpu'))
+            
             mel, spec, attn = model(graphs, text_lengths=sorted_lengths, add_info=add_info)
             # Generate wav file
             num_files_to_write = len(graphs)
             for i in tqdm(range(num_files_to_write), desc="Generating speech"):
                 wav = ap.inv_spectrogram(spec[i].cpu().numpy().T)
-                ap.save_wav(wav, f"{args.output_dir}/{batch_i*32 + i}.wav")
+                savename =  "{}/{:03}.wav".format(args.output_dir, batch_i*32 + i)
+                if add_info is not None:
+                    accent = inference_dataloader.dataset.add_info_vocab["accent"].id2tok[add_info[i]["accent"]]
+                    savename =  "{}/{}_{:03}.wav".format(args.output_dir, accent, batch_i*32 + i)
+                ap.save_wav(wav, savename)
 
 
-def load_ckpt(config, ckpt_path):
+def load_ckpt(args, config, ckpt_path):
     ckpt = torch.load(ckpt_path, map_location=torch.device('cpu'))
     
     vocab = ckpt['vocab']
     add_info_vocab = ckpt['add_info_vocab']
-    print(ckpt['add_info_vocab'])
+    
     if MODE == "HRG":
         config['model']['tacotron']['n_vocab'] = vocab.n_vocab
-        if add_info_vocab:
-            config['model']['tacotron']['n_add_info_vocab'] = max([add_info_vocab[h].n_vocab for h in add_info_vocab])
-            config['model']['tacotron']['add_info_headers'] = list(add_info_vocab.keys())
+    if add_info_vocab:
+        config['model']['tacotron']['n_add_info_vocab'] = max([add_info_vocab[h].n_vocab for h in add_info_vocab])
+        config['model']['tacotron']['add_info_headers'] = list(add_info_vocab.keys())
     model = Tacotron(**config['model']['tacotron'])
     model.load_state_dict(ckpt['state_dict'])
+    model = model.to(device=torch.device('cuda') if args.gpu else torch.device('cpu'))
+   
     # This yeilds the best performance, not sure why
     # model.mel_decoder.eval()
     model.embedding.eval()
