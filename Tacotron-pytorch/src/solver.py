@@ -140,7 +140,7 @@ class Trainer(Solver):
         self.model.train()
         self.verbose('Start training: {} batches'.format(len(self.data_tr)))
         while self.step < self.max_step:
-            for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_tr):
+            for curr_b, (_, txt, text_lengths, mel, spec, add_info) in enumerate(self.data_tr):
                 # Sort data by length
                 sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
                 indices = indices.long().numpy()
@@ -290,7 +290,7 @@ class Trainer(Solver):
         total_loss_avg = 0.0
 
             
-        for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
+        for curr_b, (_, txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
             # Sort data by length
             sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
             indices = indices.long().numpy()

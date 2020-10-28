@@ -93,12 +93,13 @@ class MyDataset(Dataset):
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
         #
-        meta = {'text':[], 'mel': [], 'spec': []}
+        meta = {'id': [], 'text':[], 'mel': [], 'spec': []}
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 parts = line.split('|')
                 fmel, fspec, n_frames, text = parts[:4]             # Extract only first 4 entries and ignore add info
+                meta['id'].append(fmel.split("-")[0])
                 meta['text'].append(text)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
@@ -114,9 +115,11 @@ class MyDataset(Dataset):
         self.vocab = None
         self.add_info_vocab = None
         print("Char model using text2seq function in symbols. No vocab needed")
+        self.meta = meta
 
     def __getitem__(self, idx):
-        item = (self.X[idx],
+        item = (self.meta['id'][idx],
+                self.X[idx],
                 np.load(self.Y_mel[idx]),
                 np.load(self.Y_spec[idx]))
         return item
@@ -134,12 +137,13 @@ class MyDatasetAddInfo(Dataset):
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
         #
-        meta = {'text':[], 'mel': [], 'spec': [], 'add_info': []}
+        meta = {'id': [], 'text':[], 'mel': [], 'spec': [], 'add_info': []}
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 # Read the file and integrate any additional info with the text itself
                 fmel, fspec, n_frames, text, add_info = line.split('|')
+                meta['id'].append(fmel.split("-")[0])
                 meta['text'].append(text)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
@@ -173,9 +177,11 @@ class MyDatasetAddInfo(Dataset):
         # dummy vocab (since char model doesnt need one)
         self.vocab = None
         print("Char model using text2seq function in symbols. No vocab needed")
+        self.meta = meta
         
     def __getitem__(self, idx):
-        item = (self.X[idx],
+        item = (self.meta['id'][idx],
+                self.X[idx],
                 np.load(self.Y_mel[idx]),
                 np.load(self.Y_spec[idx]),
                 self.add_info[idx])
@@ -188,33 +194,33 @@ class MyDatasetAddInfo(Dataset):
 def collate_fn(batch, r):
     """Create batch"""
     num_inputs = len(batch[0])
-
-    input_lengths = [len(x[0]) for x in batch]
+    ids = [x[0] for x in batch]
+    input_lengths = [len(x[1]) for x in batch]
     max_input_len = np.max(input_lengths)
     # (r9y9's comment) Add single zeros frame at least, so plus 1
-    max_target_len = np.max([len(x[1]) for x in batch]) + 1
+    max_target_len = np.max([len(x[2]) for x in batch]) + 1
     if max_target_len % r != 0:
         max_target_len += r - max_target_len % r
         assert max_target_len % r == 0
 
-    a = np.array([_pad(x[0], max_input_len) for x in batch], dtype=np.int)
+    a = np.array([_pad(x[1], max_input_len) for x in batch], dtype=np.int)
     x_batch = torch.LongTensor(a)
 
     input_lengths = torch.LongTensor(input_lengths)
 
-    b = np.array([_pad_2d(x[1], max_target_len) for x in batch],
+    b = np.array([_pad_2d(x[2], max_target_len) for x in batch],
                  dtype=np.float32)
     mel_batch = torch.FloatTensor(b)
 
-    c = np.array([_pad_2d(x[2], max_target_len) for x in batch],
+    c = np.array([_pad_2d(x[3], max_target_len) for x in batch],
                  dtype=np.float32)
     spec_batch = torch.FloatTensor(c)
 
-    if num_inputs > 3:
+    if num_inputs > 4:
         add_info = [x[-1] for x in batch]
-        return x_batch, input_lengths, mel_batch, spec_batch, add_info
+        return ids, x_batch, input_lengths, mel_batch, spec_batch, add_info
     else:
-        return x_batch, input_lengths, mel_batch, spec_batch, None
+        return ids, x_batch, input_lengths, mel_batch, spec_batch, None
 
 
 

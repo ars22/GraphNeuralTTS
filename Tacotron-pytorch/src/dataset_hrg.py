@@ -182,11 +182,12 @@ class MyDataset(Dataset):
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
         #
-        meta = {'hrg': [], 'mel': [], 'spec': []}
+        meta = {'id':[], 'hrg': [], 'mel': [], 'spec': []}
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 fmel, fspec, n_frames, hrg = line.split('|')[:4]
+                meta['id'].append(fmel.split("-")[0])
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
@@ -210,9 +211,11 @@ class MyDataset(Dataset):
         self.Y_mel = [os.path.join(data_dir, f) for f in meta['mel']]
         self.Y_spec = [os.path.join(data_dir, f) for f in meta['spec']]
         assert len(self.X) == len(self.Y_mel) == len(self.Y_spec)
+        self.meta = meta
 
     def __getitem__(self, idx):
-        item = (self.X[idx],
+        item = (self.meta['id'][idx],
+                self.X[idx],
                 np.load(self.Y_mel[idx]),
                 np.load(self.Y_spec[idx]))
         return item
@@ -233,12 +236,13 @@ class MyDatasetAddInfo(Dataset):
         # spec: filenames of (linear) spectrogram
         # add_info_vocab: None only for Train
 
-        meta = {'hrg':[], 'mel': [], 'spec': [], 'add_info': []}
+        meta = {'id':[], 'hrg':[], 'mel': [], 'spec': [], 'add_info': []}
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 # Read the file and integrate any additional info with the text itself
                 fmel, fspec, n_frames, hrg, add_info = line.split('|')
+                meta['id'].append(fmel.split("-")[0])
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
@@ -280,9 +284,11 @@ class MyDatasetAddInfo(Dataset):
         self.Y_mel = [os.path.join(data_dir, f) for f in meta['mel']]
         self.Y_spec = [os.path.join(data_dir, f) for f in meta['spec']]
         assert len(self.X) == len(self.Y_mel) == len(self.Y_spec) == len(self.add_info)
+        self.meta = meta
         
     def __getitem__(self, idx):
-        item = (self.X[idx],
+        item = (self.meta['id'][idx],
+                self.X[idx],
                 np.load(self.Y_mel[idx]),
                 np.load(self.Y_spec[idx]),
                 self.add_info[idx])
@@ -302,27 +308,29 @@ def collate_fn(batch, r):
     spec_batch: torch.FloatTensor (bsz * max_tgt_len)
     """
     num_inputs = len(batch[0])
-    x_batch = [x[0] for x in batch]
+    ids = [x[0] for x in batch]
+    
+    x_batch = [x[1] for x in batch]
 
-    n_phone_nodes = [len(x[0].syll_nodes) for x in batch]
+    n_phone_nodes = [len(x[1].syll_nodes) for x in batch]
     n_phone_nodes = torch.LongTensor(n_phone_nodes)
 
     # (r9y9's comment) Add single zeros frame at least, so plus 1
-    max_target_len = np.max([len(x[1]) for x in batch]) + 1
+    max_target_len = np.max([len(x[2]) for x in batch]) + 1
     if max_target_len % r != 0:
         max_target_len += r - max_target_len % r
         assert max_target_len % r == 0
 
-    b = np.array([_pad_2d(x[1], max_target_len) for x in batch],
+    b = np.array([_pad_2d(x[2], max_target_len) for x in batch],
                  dtype=np.float32)
     mel_batch = torch.FloatTensor(b)
 
-    c = np.array([_pad_2d(x[2], max_target_len) for x in batch],
+    c = np.array([_pad_2d(x[3], max_target_len) for x in batch],
                  dtype=np.float32)
     spec_batch = torch.FloatTensor(c)
     
-    if num_inputs > 3:
+    if num_inputs > 4:
         add_info = [x[-1] for x in batch]
-        return x_batch, n_phone_nodes, mel_batch, spec_batch, add_info
+        return ids, x_batch, n_phone_nodes, mel_batch, spec_batch, add_info
     else:
-        return x_batch, n_phone_nodes, mel_batch, spec_batch, None
+        return ids, x_batch, n_phone_nodes, mel_batch, spec_batch, None
