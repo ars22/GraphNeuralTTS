@@ -2,6 +2,7 @@ import os
 import math
 import numpy as np
 import json
+from numpy.lib.utils import info
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
@@ -111,7 +112,8 @@ class Trainer(Solver):
 
         self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
 
-        #  self.info_classifier = MelClassifier
+        self.info_classifier = MelClassifier(num_class=self.config['model']['tacotron']['n_add_info_vocab']).to(device=self.device)
+        self.info_criterion = torch.nn.CrossEntropyLoss()
 
         self.criterion = torch.nn.L1Loss()
 
@@ -160,7 +162,8 @@ class Trainer(Solver):
                 
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
-
+                info_labels =   torch.tensor([x[self.add_info_headers[0]] for x in add_info]).to(device=self.device)
+              
                 # Decay learning rate
                 current_lr = self.update_optimizer()
 
@@ -168,13 +171,17 @@ class Trainer(Solver):
                 self.optim.zero_grad()
                 mel_outputs, linear_outputs, attn = self.model(
                         txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
-                print(mel_outputs.shape, len(add_info))
                 mel_loss = self.criterion(mel_outputs, mel)
+
+                # info loss
+                h_n, logits = self.info_classifier(mel_outputs, sorted_lengths)
+                
+                info_loss = self.info_criterion(logits, info_labels).mean()
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                             + 0.5 * self.criterion(linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss
+                loss = mel_loss + linear_loss + info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
@@ -194,14 +201,15 @@ class Trainer(Solver):
                     self.write_log('Loss', {
                         'total_loss' : loss.item(),
                         'mel_loss'   : mel_loss.item(),
-                        'linear_loss': linear_loss.item()
+                        'linear_loss': linear_loss.item(),
+                        'info_loss': info_loss.item()
                         })
                     # self.write_log('max_grad_norm', max_grad)
                     self.write_log('l2_grad_norm', grad_norm)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, info_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), info_loss.item(), grad_norm, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:

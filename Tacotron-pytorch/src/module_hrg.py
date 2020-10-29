@@ -138,7 +138,6 @@ class TacotronHRG(nn.Module):
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
-
         # if there are additional headers like speaker or accent we
         # append them to encoder output
         if len(self.add_info_headers):

@@ -34,7 +34,7 @@ if __name__ == '__main__':
     # 
 
     # Train
-    from src.solver import Trainer as Solver
+    from src.solver_info import Trainer as Solver
     # from src.solver_hrg import Trainer as Solver
     solver = Solver(config, args)
     if not args.checkpoint_path:
