@@ -17,9 +17,10 @@ def split_and_save(args):
             splits[split] = tmp
     
     meta_dir = os.path.dirname(os.path.realpath(meta_all_path))
-    meta_tr_path = os.path.join(meta_dir, 'meta_train.txt')
-    meta_te_path = os.path.join(meta_dir, 'meta_test.txt')
-    meta_val_path = os.path.join(meta_dir, 'meta_val.txt')
+    meta_file_name = os.path.realpath(meta_all_path).split("/")[-1].split(".")[0]
+    meta_tr_path = os.path.join(meta_dir, f'{meta_file_name}_train.txt')
+    meta_te_path = os.path.join(meta_dir, f'{meta_file_name}_test.txt')
+    meta_val_path = os.path.join(meta_dir, f'{meta_file_name}_val.txt')
     
     with open(meta_all_path) as f:
         meta_all = f.readlines()
@@ -29,7 +30,7 @@ def split_and_save(args):
 
     for idx, line in enumerate(meta_all):
         # arctic_axb_a0489-mel.npy -> arctic_axb_a0489
-        line_id = line.split("|")[0].split("-")[0]
+        line_id = "-".join(line.split("|")[0].split("-")[:-1])
         if line_id in splits["train"]:
             meta_tr.append(line)
 
@@ -40,6 +41,7 @@ def split_and_save(args):
         elif line_id in splits["val"]:
             meta_vl.append(line)
         else:
+            print(line_id, splits['train'][0])
             raise Exception(f"Unknown split present in the splits file")
 
     with open(meta_tr_path, 'w') as ftr:
