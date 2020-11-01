@@ -50,4 +50,4 @@ class MelClassifier(nn.Module):
         
         h_n = h_n.permute(1, 0, 2).reshape(batch_size, -1)
         return h_n, self.mlp(h_n)
-        
+
