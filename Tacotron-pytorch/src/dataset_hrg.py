@@ -53,17 +53,23 @@ def _pad_2d(x, max_len):
 
 class HRGVocab:
 
-    def __init__(self, hrg_jsons):
+    def __init__(self, hrg_jsons, n_duration_buckets=100, n_end_buckets=100):
         self.hrg_jsons = hrg_jsons
+        self.n_duration_buckets = n_duration_buckets
+        self.n_end_buckets = n_end_buckets
         self.init_vocab()
-
+        
 
     def init_vocab(self):
-        tokens = Counter(list(self.get_tokens_from_hrg()))
+        tokens = list(self.get_tokens_from_hrg())
+        duration_tokens, end_tokens = self.get_duration_and_end_tokens_from_hrg()
+        tokens.extend(list(duration_tokens))
+        tokens.extend(list(end_tokens))
+        tokens = Counter(tokens)
         self.tok2count = {tok: count for tok, count in tokens.items() if count > 1}
         tokens = [w[0] for w in tokens.items() if w[1] > 1]
         tokens.extend([str(i) for i in range(20)])  # position
-        tokens.extend(["<W>", "<SYLL>", "<UNK>"])
+        tokens.extend(["<W>", "<SYLL>", "<UNK>", "<UNKDUR>"])
         self.tok2id = {w: i for i, w in enumerate(tokens)}
         self.id2tok = {i: w for w, i in self.tok2id.items()}
         self.n_vocab = len(self.tok2id)
@@ -92,6 +98,57 @@ class HRGVocab:
             return self.tok2id[tok]
         return self.tok2id["<UNK>"]
 
+
+    def get_discretized_duration(self, duration):
+        assert type(duration) == float or type(duration) == int
+        return "DB_" + str(np.digitize([duration], self.duration_buckets)[0])
+
+
+    def get_discretized_end(self, end):
+        assert type(end) == float or type(end) == int
+        return "EB_" + str(np.digitize([end], self.end_buckets)[0])
+
+    
+    def get_duration_and_end_tokens_from_hrg(self):
+        print(f"Computing duration percentiles with {self.n_duration_buckets} buckets")
+        print(f"Computing end percentiles with {self.n_end_buckets} buckets")
+        
+        def _get_duration_and_end_from_word_rep(word_rep):
+            durations = []
+            ends = []
+            for daughter in word_rep["daughters"]:
+                for syll in daughter:
+                    durations.append(syll["dur"])
+                    ends.append(syll["end"])
+            return durations, ends
+        
+        durations = []
+        ends = []
+        for hrg_json in tqdm(self.hrg_jsons, total=len(self.hrg_jsons), desc="Parsing HRGs"):
+            for word_rep in hrg_json:
+                D, E = _get_duration_and_end_from_word_rep(word_rep)
+                durations.extend(D)
+                ends.extend(E)
+
+        self.duration_buckets = np.sort(np.percentile(durations, np.arange(100), interpolation='linear'))
+        self.end_buckets = np.sort(np.percentile(ends, np.arange(100), interpolation='linear'))
+        
+        print("Duration Buckets:", self.duration_buckets)
+        print("End Buckets:", self.end_buckets)
+        
+        duration_tokens = []
+        for duration in durations:
+            duration_tokens.append(self.get_discretized_duration(duration))            
+        
+        end_tokens = []
+        for end in ends:
+            end_tokens.append(self.get_discretized_end(end))            
+        
+        return duration_tokens, end_tokens
+
+
+
+        
     def __len__(self):
         return self.n_vocab
 
@@ -159,14 +216,35 @@ class HRG:
                 for k, syll in enumerate(daughter):
 
                     syll_node = f"{syll['syll']}-{i}-{j}-{k}"
+                    
+                    # add duration and end node as children to phone node
+                    discretized_duration = self.vocab.get_discretized_duration(syll['dur'])
+                    discretized_duration_node = f"{discretized_duration}-{i}-{j}-{k}"
+                    discretized_end = self.vocab.get_discretized_end(syll['end'])
+                    discretized_end_node = f"{discretized_end}-{i}-{j}-{k}"
+
                     syll_node_id = self.vocab.get_tok2id(syll['syll'])
+                    discretized_duration_nodeid = self.vocab.get_tok2id(discretized_duration)
+                    discretized_end_nodeid = self.vocab.get_tok2id(discretized_end)
+
                     node_idx[syll_node] = len(node_idx)
+                    node_idx[discretized_duration_node] = len(node_idx)
+                    node_idx[discretized_end_node] = len(node_idx)
+
                     x.append(syll_node_id)
+                    x.append(discretized_duration_nodeid)
+                    x.append(discretized_end_nodeid)
                     syll_node_idxs.append(node_idx[syll_node])
 
                     edges.append(
                         [node_idx[syll_parent_node], node_idx[syll_node]])
-
+                    edges.append(
+                        [node_idx[syll_node], node_idx[discretized_duration_node]])
+                    edges.append(
+                        [node_idx[syll_node], node_idx[discretized_end_node]])
+                    # print("duration", discretized_duration, discretized_duration_nodeid, discretized_duration_node)
+                    # print("end", discretized_end, discretized_end_nodeid, discretized_end_node)
+                    
         return Data(x=torch.tensor(x, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
                     syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
 
