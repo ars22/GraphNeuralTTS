@@ -5,7 +5,8 @@ Usage:
 
 Options:
     --data-path=<str>                 [Folder that contains the mel files]
-    --checkpoint-path=<str>          [Folder where the classifier checkpoint is supposed to be stored]
+    --splits-path=<str>               [Path to the splits file]
+    --checkpoint-path=<str>           [Folder where the classifier checkpoint is supposed to be stored]
 """
 from docopt import docopt
 from os import stat
@@ -22,6 +23,7 @@ from collections import Counter
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
 import subprocess
+from typing import List
 
 
 def get_1dconv(in_channels, out_channels, max_pool=False):
@@ -109,13 +111,16 @@ class MelClassifierDataset(Dataset):
         Dataset ([type]): [description]
     """
 
-    def __init__(self, basepth: str, label_from_filename_func):
-        self.mel_files = glob.glob(f"{basepth}/*mel*")
-        print(f"{len(self.mel_files)} mel-files found")
+    def __init__(self, datapath: str, mel_files: List[str], label_from_filename_func):
+        self.mel_files = []
+        for mel_file in mel_files:
+            basename = mel_file.split(".")[0]
+            self.mel_files.append(f"{datapath}/{basename}-mel.npy")
+
         # the files are supposed to be named dataset_speaker_*.wav,
         # e.g. australian_s02_362.wav
-        self.labels = [label_from_filename_func(
-            mel_file_pth) for mel_file_pth in self.mel_files]
+        self.labels = [
+            f"{datapath}/{label_from_filename_func(mel_file_pth)}" for mel_file_pth in self.mel_files]
         self.label_dict = {k: i for i, k in enumerate(
             sorted(Counter(self.labels).keys()))}
         print(self.label_dict)
@@ -151,22 +156,36 @@ class MelClassifierDataset(Dataset):
 
 
 class MelClassifierTrainer(object):
-    def __init__(self, datapth: str, checkpoint_pth: str,
+    def __init__(self, splits_pth: str, checkpoint_pth: str,
+                 datapath: str,
                  dataset_utils_class=ArcticUtils(),
                  attribute: str = "accent",
                  bsz: int = 32, num_epochs=30) -> None:
 
-        self.datapth = datapth
+        with open(splits_pth, "r") as f:
+            splits = json.load(f)
+            train_files = splits["train"]
+            test_files = splits["test"]
+            val_files = splits["val"]
+
         self.checkpoint_pth = checkpoint_pth
         if attribute == "accent":
-            self.dataset = MelClassifierDataset(
-                datapth, label_from_filename_func=dataset_utils_class.get_accent_from_filename)
+            self.train_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=train_files, label_from_filename_func=dataset_utils_class.get_accent_from_filename)
+            self.test_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=test_files, label_from_filename_func=dataset_utils_class.get_accent_from_filename)
+            self.val_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=val_files, label_from_filename_func=dataset_utils_class.get_accent_from_filename)
+
         else:
             raise NotImplementedError()
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         self.model = MelClassifier(
-            len(self.dataset.label_dict)).to(self.device)
+            len(self.train_dataset.label_dict)).to(self.device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-3,
                                            betas=(0.9, 0.99),
                                            eps=1e-6,
@@ -178,21 +197,21 @@ class MelClassifierTrainer(object):
 
         losses = []
         accuracy = []
+        best_val_acc = float("-inf")
         for epoch in range(self.num_epochs):
 
-            dataloader = self.dataset.batchify(self.dataset, bsz=self.bsz)
+            dataloader = MelClassifierDataset.batchify(
+                self.train_dataset, bsz=self.bsz)
 
             for i, (mels, labels, input_lengths) in enumerate(dataloader):
+
                 mels = mels.to(self.device)
                 labels = labels.to(self.device)
-
                 self.optimizer.zero_grad()
-
                 h_n, logits = self.model(mels, input_lengths)
                 loss = loss_func(logits, labels).mean()
                 accuracy.append(sum(torch.argmax(logits, dim=1)
                                     == labels).item() * 100. / len(labels))
-
                 loss.backward()
                 self.optimizer.step()
                 losses.append(loss.item())
@@ -200,10 +219,45 @@ class MelClassifierTrainer(object):
                     print(
                         f"Epoch = {epoch} iter = {i} Loss = {round(np.array(losses).mean(), 2)} Acc = {round(np.array(accuracy).mean(), 2)}")
                     losses = []
+            val_acc = self.eval(self.val_dataset, split="val")
+            if val_acc > best_val_acc:
+                print(f"Accuracy improved from {best_val_acc} to {val_acc}")
+                best_val_acc = val_acc
+                self.save_model(epoch=epoch, iternumber=i, val_acc=val_acc)
+
+        self.eval(self.test_dataset, split="test")
+
+    def save_model(self, epoch: int, iternumber: int, val_acc: float):
+        val_acc = int(val_acc)
+        pth = f"{self.checkpoint_pth}/checkpoint_{epoch}_{iternumber}_{val_acc}"
+        print(f"Model saved at {pth}")
+        torch.save(self.model.state_dict(), pth)
+
+    def eval(self, dataset, split) -> float:
+        self.model.eval()
+        dataloader = MelClassifierDataset.batchify(dataset, bsz=self.bsz)
+        loss_func = nn.CrossEntropyLoss()
+        losses = []
+        accuracy = []
+        for i, (mels, labels, input_lengths) in tqdm(enumerate(dataloader), total=len(dataset) // 32, desc=f"Evaluating {split}"):
+            mels = mels.to(self.device)
+            labels = labels.to(self.device)
+            with torch.no_grad():
+                h_n, logits = self.model(mels, input_lengths)
+                loss = loss_func(logits, labels).mean()
+                accuracy.append(sum(torch.argmax(logits, dim=1)
+                                    == labels).item() * 100. / len(labels))
+                losses.append(loss.item())
+        self.model.train()
+        print(
+            f"Evaluating {split}: loss = {round(np.array(losses).mean(), 2)} accuracy = {round(np.array(accuracy).mean(), 2)}")
+        return round(np.array(accuracy).mean(), 2)
 
 
 if __name__ == "__main__":
     args = docopt(__doc__)
     trainer = MelClassifierTrainer(
-        datapth=args["--data-path"], checkpoint_pth=args["--checkpoint-path"])
+        datapath=args["--data-path"],
+        splits_pth=args["--splits-path"],
+        checkpoint_pth=args["--checkpoint-path"])
     trainer.run()

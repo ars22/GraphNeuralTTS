@@ -111,8 +111,10 @@ class Trainer(Solver):
         self.verbose("Build model")
 
         self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
-
+        
         self.info_classifier = MelClassifier(num_class=self.config['model']['tacotron']['n_add_info_vocab']).to(device=self.device)
+        self.info_classifier.load_state_dict(torch.load(self.config['model']['tacotron']['classifier']))
+        self.info_classifier.eval()
         self.info_criterion = torch.nn.CrossEntropyLoss()
 
         self.criterion = torch.nn.L1Loss()
