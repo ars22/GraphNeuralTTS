@@ -111,10 +111,11 @@ class Trainer(Solver):
         self.verbose("Build model")
 
         self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
-        
+
         self.info_classifier = MelClassifier(num_class=self.config['model']['tacotron']['n_add_info_vocab']).to(device=self.device)
-        self.info_classifier.load_state_dict(torch.load(self.config['model']['tacotron']['classifier']))
-        self.info_classifier.eval()
+        self.info_classifier.load_state_dict(torch.load(self.config['solver']['classifier_checkpoint']))
+        for param in self.info_classifier.parameters():
+            param.requires_grad = False
         self.info_criterion = torch.nn.CrossEntropyLoss()
 
         self.criterion = torch.nn.L1Loss()
@@ -183,7 +184,7 @@ class Trainer(Solver):
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                             + 0.5 * self.criterion(linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss + 1e-5 * info_loss
+                loss = mel_loss + linear_loss + info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme

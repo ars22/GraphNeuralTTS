@@ -89,12 +89,14 @@ class ArcticUtils(DatasetUtils):
     and accent information from the name of a mel file.
     """
     speaker_accent_dict = {
-        ""
+        "aew": "american", "bdl": "american", "clb": "american", "eey": "american",
+        "jmk": "american", "ljm": "american", "lnh": "american", "rms": "american", 
+        "slt": "american", "ahw": "european", "awb": "european", "fem": "european",
+        "rxr": "european", "aup": "hindi", "axb": "hindi", "slp": "hindi", "gka": "telugu", "ksp": "telugu"
     }
 
     def get_accent_from_filename(self, filename: str) -> str:
         speaker = self.get_speaker_from_filename(filename)
-        return speaker
         return ArcticUtils.speaker_accent_dict[speaker]
 
     def get_speaker_from_filename(self, filename: str):
