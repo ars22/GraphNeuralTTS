@@ -181,7 +181,7 @@ class Trainer(Solver):
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                             + 0.5 * self.criterion(linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss + info_loss
+                loss = mel_loss + linear_loss + 1e-5 * info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
