@@ -26,32 +26,35 @@ import subprocess
 from typing import List
 
 
-def get_1dconv(in_channels, out_channels, max_pool=False):
-    return nn.Sequential(nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1),
-                         nn.ELU(),
-                         nn.BatchNorm1d(out_channels),
-                         nn.MaxPool1d(
-                             3, stride=2) if max_pool else nn.Identity(),
-                         nn.Dropout(p=0.1))
+
 
 
 class MelClassifier(nn.Module):
+    @staticmethod
+    def get_1dconv(in_channels, out_channels, max_pool=False):
+        return nn.Sequential(nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1),
+                            nn.ELU(),
+                            nn.BatchNorm1d(out_channels),
+                            nn.MaxPool1d(
+                                3, stride=2) if max_pool else nn.Identity(),
+                            nn.Dropout(p=0.1))
     def __init__(self,
                  num_class,
                  mel_spectogram_dim: int = 80,
                  gru_hidden_size=32,
-                 gru_num_layers=2):
+                 gru_num_layers=2,
+                 gru_dropout=0.3):
         super(MelClassifier, self).__init__()
         self.num_class = num_class
         self.conv_blocks = nn.Sequential(
-            get_1dconv(in_channels=mel_spectogram_dim, out_channels=128))
+            MelClassifier.get_1dconv(in_channels=mel_spectogram_dim, out_channels=128))
 #                         get_1dconv(in_channels=64, out_channels=128),
 #                         get_1dconv(in_channels=128, out_channels=128, max_pool=True),
 #                         get_1dconv(in_channels=128, out_channels=128, max_pool=True),
 #                         get_1dconv(in_channels=128, out_channels=128, max_pool=True))
 
         self.gru = nn.GRU(input_size=128, hidden_size=gru_hidden_size, num_layers=gru_num_layers,
-                          bidirectional=True, batch_first=True, dropout=0.3)
+                          bidirectional=True, batch_first=True, dropout=gru_dropout)
         num_directions = 2
         self.mlp = nn.Linear(
             gru_hidden_size * gru_num_layers * num_directions, self.num_class)
