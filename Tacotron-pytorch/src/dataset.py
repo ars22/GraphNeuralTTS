@@ -68,9 +68,12 @@ class VocabAddInfo:
             [type]: [HRGVocab]
         """
         tok2id = {}
+        tokens = set()
         for add_info_dict in dataset:
             if add_info_dict[entity] not in tok2id:
-                tok2id[add_info_dict[entity]] = len(tok2id)
+                tokens.add(add_info_dict[entity])
+        
+        tok2id = {k: i for i, k in enumerate(sorted(tokens))}
         id2tok = {v: k for k,v in tok2id.items()}
 
         print("Add info:", entity)
