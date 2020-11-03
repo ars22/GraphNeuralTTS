@@ -13,7 +13,7 @@ from torch_geometric.data import Batch
 from matplotlib import pyplot as plt 
 
 # Imports based on HRG or No HRG
-MODE = "HRG"
+MODE = "CHAR"
 print("MODE : ", MODE)
 if MODE == "HRG":
     from .dataset_hrg import getDataLoader
@@ -152,7 +152,7 @@ class Trainer(Solver):
                     txt = txt.to(device=self.device)
 
                 mel, spec = mel[indices], spec[indices]
-
+                add_info = [ add_info[i] for i in indices ]
                 
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
