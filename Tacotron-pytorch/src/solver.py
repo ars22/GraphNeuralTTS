@@ -145,6 +145,9 @@ class Trainer(Solver):
                 sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
                 indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
+                if len(sorted_lengths) == 0:
+                    continue
+
                 if type(txt) == list:
                     txt = [txt[idx] for idx in indices]
                 else:
