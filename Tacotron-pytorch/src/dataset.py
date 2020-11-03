@@ -239,12 +239,15 @@ def collate_fn(batch, r):
     if num_inputs > 4:
         add_info = [x[-1] for x in batch]
         headers = list(add_info[0].keys())
+        allophone_lengths = []
         for h in headers:
             if isinstance(add_info[0][h], list):
-                max_allophone_length = np.max([len(a[h]) for a in add_info])
+                allophone_lengths = np.array([len(a[h]) for a in add_info])
+                max_allophone_length = np.max(allophone_lengths)
                 for i, _ in enumerate(add_info):
                     add_info[i][h] = _pad(add_info[i][h], max_allophone_length)
-        return ids, x_batch, input_lengths, mel_batch, spec_batch, add_info
+        return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, add_info
+        # return ids, x_batch, input_lengths, mel_batch, spec_batch, add_info
     else:
         return ids, x_batch, input_lengths, mel_batch, spec_batch, None
 

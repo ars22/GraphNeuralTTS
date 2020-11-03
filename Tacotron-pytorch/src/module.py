@@ -194,7 +194,7 @@ class MelDecoder(nn.Module):
         super(MelDecoder, self).__init__()
         self.add_info_headers = add_info_headers
         self.add_info_embedding_size = add_info_embedding_size
-        self.concatenated_additional_embedding_size = sum(list(add_info_embedding_size.values()))
+        self.concatenated_additional_embedding_size = sum([ a[1] for a in add_info_embedding_size.items() if a[0] != "allophone"])
         self.in_size = in_size
         self.r = r
         self.prenet = Prenet(in_size * r, hidden_sizes=[256, 128])
@@ -325,10 +325,10 @@ class Tacotron(nn.Module):
         if len(self.add_info_headers) and "allophone" in self.add_info_headers:
             add_info_tensor = get_tokens_from_additional_info(add_info, "allophone").to(self.device)
             allophone_embedding = self.add_info_embedding._modules["allophone"](add_info_tensor)
-            print (allophone_embedding.shape)
 
         # -> (batch_size, timesteps (encoder), text_dim)
-        encoder_outputs = self.encoder(txt_feat, text_lengths)
+        # encoder_outputs = self.encoder(txt_feat, text_lengths)
+        encoder_outputs = self.encoder(allophone_embedding, text_lengths)
 
         # if there are additional headers like speaker or accent we
         # append them to encoder output
