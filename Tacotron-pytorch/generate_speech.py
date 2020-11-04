@@ -11,7 +11,7 @@ from tqdm import tqdm
 import os
 
 # Imports based on HRG or No HRG
-MODE = "CHAR"
+MODE = "HRG"
 print("MODE : ", MODE)
 if MODE == "HRG":
     from src.dataset_hrg import getDataLoader

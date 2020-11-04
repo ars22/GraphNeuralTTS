@@ -187,10 +187,12 @@ class MyDataset(Dataset):
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 fmel, fspec, n_frames, hrg = line.split('|')[:4]
-                meta['id'].append(fmel.split("-")[0])
+                meta['id'].append("-".join(fmel.split("-")[:-1]))
+                #meta['id'].append(fmel.split("-")[0])
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
+
 
         # make vocab
         if vocab is None:
@@ -242,7 +244,8 @@ class MyDatasetAddInfo(Dataset):
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 # Read the file and integrate any additional info with the text itself
                 fmel, fspec, n_frames, hrg, add_info = line.split('|')
-                meta['id'].append(fmel.split("-")[0])
+                meta['id'].append("-".join(fmel.split("-")[:-1]))
+                #meta['id'].append(fmel.split("-")[0])
                 meta['hrg'].append(hrg)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)

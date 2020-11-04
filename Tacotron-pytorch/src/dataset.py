@@ -99,7 +99,7 @@ class MyDataset(Dataset):
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 parts = line.split('|')
                 fmel, fspec, n_frames, text = parts[:4]             # Extract only first 4 entries and ignore add info
-                meta['id'].append(fmel.split("-")[0])
+                meta['id'].append("-".join(fmel.split("-")[:-1]))
                 meta['text'].append(text)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
@@ -143,7 +143,8 @@ class MyDatasetAddInfo(Dataset):
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
                 # Read the file and integrate any additional info with the text itself
                 fmel, fspec, n_frames, text, add_info = line.split('|')
-                meta['id'].append(fmel.split("-")[0])
+                meta['id'].append("-".join(fmel.split("-")[:-1]))
+                #meta['id'].append(fmel.split("-")[0])
                 meta['text'].append(text)
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
