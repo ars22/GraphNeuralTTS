@@ -146,7 +146,8 @@ class Trainer(Solver):
                 indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
                 if len(sorted_lengths) == 0:
-                    continue
+                    print (add_info)
+                    assert False
 
                 if type(txt) == list:
                     txt = [txt[idx] for idx in indices]

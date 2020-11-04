@@ -79,6 +79,7 @@ class VocabAddInfo:
         tok2id = {}
         if pad_token:
             tok2id[pad_token] = len(tok2id)
+            tok2id["<UNK>"] = len(tok2id)
 
         for add_info_dict in dataset:
             if is_list:
@@ -238,15 +239,18 @@ def collate_fn(batch, r):
 
     if num_inputs > 4:
         add_info = [x[-1] for x in batch]
+        new_add_info = [ {} for x in batch ]
         headers = list(add_info[0].keys())
-        allophone_lengths = []
         for h in headers:
             if isinstance(add_info[0][h], list):
-                allophone_lengths = np.array([len(a[h]) for a in add_info])
-                max_allophone_length = np.max(allophone_lengths)
+                max_allophone_length = np.max(np.array([len(a[h]) for a in add_info]))
                 for i, _ in enumerate(add_info):
-                    add_info[i][h] = _pad(add_info[i][h], max_allophone_length)
-        return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, add_info
+                    new_add_info[i][h] = _pad(add_info[i][h], max_allophone_length)
+            else:
+                for i, _ in enumerate(add_info):
+                    new_add_info[i][h] = add_info[i][h]
+        allophone_lengths = np.array([ (a["allophone"] != 0).sum() for a in new_add_info])
+        return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, new_add_info
         # return ids, x_batch, input_lengths, mel_batch, spec_batch, add_info
     else:
         return ids, x_batch, input_lengths, mel_batch, spec_batch, None
