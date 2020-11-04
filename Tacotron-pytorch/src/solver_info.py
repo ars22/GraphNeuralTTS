@@ -173,6 +173,7 @@ class Trainer(Solver):
                     txt = txt[indices]
                     txt = txt.to(device=self.device)
 
+                add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
 
                 mel = mel.to(device=self.device)
@@ -181,7 +182,7 @@ class Trainer(Solver):
                 info_labels = torch.tensor(
                     [x[self.add_info_headers[0]] for x in add_info]).to(device=self.device)
 
-                info_labels = info_labels[indices]
+    
 
 
                 # Decay learning rate
@@ -204,7 +205,7 @@ class Trainer(Solver):
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss + info_loss
+                loss = mel_loss + linear_loss  + 0 * info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
@@ -246,8 +247,6 @@ class Trainer(Solver):
                         self.best_val_err = val_err
                     self.model.train()
 
-                if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
-                    self.save_ckpt()
 
                 # Global step += 1
                 self.step += 1
@@ -339,6 +338,7 @@ class Trainer(Solver):
             else:
                 txt = txt[indices]
                 txt = txt.to(device=self.device)
+            add_info = [add_info[idx] for idx in indices]
             mel, spec = mel[indices], spec[indices]
 
             mel = mel.to(device=self.device)
