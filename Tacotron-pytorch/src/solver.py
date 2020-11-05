@@ -151,6 +151,7 @@ class Trainer(Solver):
                     txt = txt[indices]
                     txt = txt.to(device=self.device)
 
+                add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
 
                 
@@ -208,8 +209,8 @@ class Trainer(Solver):
                         self.best_val_err = val_err
                     self.model.train()
 
-                if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
-                    self.save_ckpt()
+                # if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
+                #     self.save_ckpt()
 
                 # Global step += 1
                 self.step += 1
