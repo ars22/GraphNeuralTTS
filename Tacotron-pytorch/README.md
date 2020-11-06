@@ -1,5 +1,10 @@
 # TacoHRG
 
+## Allophone changes
+- Allophone is a list of tokens (compared to single string for other forms of additional info). So the data loader needed to be tweeked for accommodating a list of tokens as input (dataset.py)
+- The collate function is changed to correctly batch the add-info (dataset.py)
+- The Tacotron model needs to be changed to accommodate allophones. Also we need to use allophones instead of phonemes as input, so that's changed too (solver.py, module.py)
+
 
 ## Decoding
 ```sh
