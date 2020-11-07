@@ -150,8 +150,8 @@ class Trainer(Solver):
                 else:
                     txt = txt[indices]
                     txt = txt.to(device=self.device)
-
-                add_info = [add_info[idx] for idx in indices]
+                if add_info:
+                    add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
 
                 
@@ -301,6 +301,9 @@ class Trainer(Solver):
             else:
                 txt = txt[indices]
                 txt = txt.to(device=self.device)
+            if add_info:
+                add_info = [add_info[idx] for idx in indices]
+
             mel, spec = mel[indices], spec[indices]
 
 
