@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_gradients_custom
 import shutil
 from torch_geometric.data import Batch
-from matplotlib import pyplot as plt 
+from matplotlib import pyplot as plt
 
 # Imports based on HRG or No HRG
 MODE = "HRG"
@@ -22,11 +22,14 @@ else:
     from .dataset import getDataLoader
     from .module import Tacotron
 
+
 class Solver(object):
     """Super class Solver for all kinds of tasks (train, test)"""
+
     def __init__(self, config, args):
         self.use_gpu = args.gpu and torch.cuda.is_available()
-        self.device = torch.device('cuda') if self.use_gpu else torch.device('cpu')
+        self.device = torch.device(
+            'cuda') if self.use_gpu else torch.device('cpu')
         self.config = config
         self.args = args
 
@@ -42,9 +45,10 @@ class Solver(object):
 
 class Trainer(Solver):
     """Handle training task"""
+
     def __init__(self, config, args):
         super(Trainer, self).__init__(config, args)
-        
+
         # Best validation error, initialize it with a large number
         self.best_val_err = 1e10
         # Logger Settings
@@ -75,40 +79,40 @@ class Trainer(Solver):
         print("--" * 10, "Training Data", "--" * 10)
         # Training dataset
         self.data_tr = getDataLoader(
-                mode='train',
-                meta_path=_config['meta_path']['train'],
-                data_dir=_config['data_dir'],
-                batch_size=_config['batch_size'],
-                r=self.config['model']['tacotron']['r'],
-                n_jobs=_config['n_jobs'],
-                use_gpu=self.use_gpu,
-                add_info_headers=self.add_info_headers)
+            mode='train',
+            meta_path=_config['meta_path']['train'],
+            data_dir=_config['data_dir'],
+            batch_size=_config['batch_size'],
+            r=self.config['model']['tacotron']['r'],
+            n_jobs=_config['n_jobs'],
+            use_gpu=self.use_gpu,
+            add_info_headers=self.add_info_headers)
         print("--" * 10, "Validation Data", "--" * 10)
         # Validation dataset
         self.data_va = getDataLoader(
-                mode='test',
-                meta_path=_config['meta_path']['test'],
-                data_dir=_config['data_dir'],
-                batch_size=_config['batch_size'],
-                r=self.config['model']['tacotron']['r'],
-                n_jobs=_config['n_jobs'],
-                use_gpu=self.use_gpu,
-                add_info_headers=self.add_info_headers,
-                vocab=self.data_tr.dataset.vocab,
-                add_info_vocab=self.data_tr.dataset.add_info_vocab)
+            mode='test',
+            meta_path=_config['meta_path']['test'],
+            data_dir=_config['data_dir'],
+            batch_size=_config['batch_size'],
+            r=self.config['model']['tacotron']['r'],
+            n_jobs=_config['n_jobs'],
+            use_gpu=self.use_gpu,
+            add_info_headers=self.add_info_headers,
+            vocab=self.data_tr.dataset.vocab,
+            add_info_vocab=self.data_tr.dataset.add_info_vocab)
 
         # vocab sizes
         if hasattr(self.data_tr.dataset, 'n_vocab'):
             self.config['model']['tacotron']['n_vocab'] = self.data_tr.dataset.n_vocab
         if len(self.add_info_headers):
             self.config['model']['tacotron']['n_add_info_vocab'] = self.data_tr.dataset.n_add_info_vocab
-        
 
     def build_model(self):
         """Build model"""
         self.verbose("Build model")
 
-        self.model = Tacotron(**self.config['model']['tacotron']).to(device=self.device)
+        self.model = Tacotron(
+            **self.config['model']['tacotron']).to(device=self.device)
         self.criterion = torch.nn.L1Loss()
 
         # Optimizer
@@ -116,7 +120,8 @@ class Trainer(Solver):
         lr = _config['optimizer']['lr']
         optim_type = _config['optimizer'].pop('type', 'Adam')
         self.optim = getattr(torch.optim, optim_type)
-        self.optim = self.optim(self.model.parameters(), **_config['optimizer'])
+        self.optim = self.optim(self.model.parameters(),
+                                **_config['optimizer'])
         # Load checkpoint if specify
         if self.checkpoint_path is not None:
             self.load_ckpt()
@@ -142,7 +147,8 @@ class Trainer(Solver):
         while self.step < self.max_step:
             for curr_b, (_, txt, text_lengths, mel, spec, add_info) in enumerate(self.data_tr):
                 # Sort data by length
-                sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
+                sorted_lengths, indices = torch.sort(
+                    text_lengths.view(-1), dim=0, descending=True)
                 indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
                 if type(txt) == list:
@@ -154,7 +160,6 @@ class Trainer(Solver):
                     add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
 
-                
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
 
@@ -164,40 +169,44 @@ class Trainer(Solver):
                 # Forwarding
                 self.optim.zero_grad()
                 mel_outputs, linear_outputs, attn = self.model(
-                        txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
+                    txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
                 mel_loss = self.criterion(mel_outputs, mel)
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
-                            + 0.5 * self.criterion(linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
+                    + 0.5 * \
+                    self.criterion(
+                        linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
                 loss = mel_loss + linear_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
                 # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/challenges/msrlid2020/partA/local/util.py#L845
-                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config['solver']['grad_clip'])
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.config['solver']['grad_clip'])
                 # max_grad, _ = clip_gradients_custom(self.model, self.config['solver']['grad_clip'])
-                
-                
+
                 # Skip this update if grad is NaN
                 if math.isnan(grad_norm):
-                    self.verbose('Error : grad norm is NaN @ step ' + str(self.step))
+                    self.verbose(
+                        'Error : grad norm is NaN @ step ' + str(self.step))
                 else:
                     self.optim.step()
 
                 # Add to tensorboard
                 if self.step % 5 == 0:
                     self.write_log('Loss', {
-                        'total_loss' : loss.item(),
-                        'mel_loss'   : mel_loss.item(),
+                        'total_loss': loss.item(),
+                        'mel_loss': mel_loss.item(),
                         'linear_loss': linear_loss.item()
-                        })
+                    })
                     # self.write_log('max_grad_norm', max_grad)
                     self.write_log('l2_grad_norm', grad_norm)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(
+                        self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:
@@ -209,15 +218,19 @@ class Trainer(Solver):
                         self.best_val_err = val_err
                     self.model.train()
 
-                # if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
-                #     self.save_ckpt()
+                if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
+                    self.save_ckpt(tag="scheduled_save")
 
                 # Global step += 1
                 self.step += 1
                 local_step += 1
 
-    def save_ckpt(self):
-        ckpt_path = os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step))
+    def save_ckpt(self, tag=""):
+
+        ckpt_path = (
+            os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0
+            else
+            os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(self.step, tag)))
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),
@@ -225,20 +238,21 @@ class Trainer(Solver):
             "vocab": self.data_tr.dataset.vocab,
             "add_info_vocab": self.data_tr.dataset.add_info_vocab,
         }, ckpt_path)
-        self.verbose("@ step {} => saved checkpoint: {}".format(self.step, ckpt_path))
+        self.verbose(
+            "@ step {} => saved checkpoint: {}".format(self.step, ckpt_path))
 
     def load_ckpt(self):
         self.verbose("Load checkpoint from: {}".format(self.checkpoint_path))
         ckpt = torch.load(self.checkpoint_path)
         vocab = ckpt['vocab']
         add_info_vocab = ckpt['add_info_vocab']
-        
+
         if MODE == "HRG":
             self.config['model']['tacotron']['n_vocab'] = vocab.n_vocab
             if add_info_vocab:
                 self.config['model']['tacotron']['n_add_info_vocab'] = add_info_vocab.n_add_info_vocab
             self.model = Tacotron(**self.config['model']['tacotron'])
-    
+
         self.model.load_state_dict(ckpt['state_dict'])
         self.model = self.model.to(device=self.device)
         self.optim.load_state_dict(ckpt['optimizer'])
@@ -268,7 +282,6 @@ class Trainer(Solver):
             vocab=vocab,
             add_info_vocab=add_info_vocab)
 
-
     def write_log(self, val_name, val_dict):
         if type(val_dict) == dict:
             self.log_writer.add_scalars(val_name, val_dict, self.step)
@@ -290,10 +303,10 @@ class Trainer(Solver):
         linear_loss_avg = 0.0
         total_loss_avg = 0.0
 
-            
         for curr_b, (_, txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
             # Sort data by length
-            sorted_lengths, indices = torch.sort(text_lengths.view(-1), dim=0, descending=True)
+            sorted_lengths, indices = torch.sort(
+                text_lengths.view(-1), dim=0, descending=True)
             indices = indices.long().numpy()
             sorted_lengths = sorted_lengths.long().numpy()
             if type(txt) == list:
@@ -306,18 +319,19 @@ class Trainer(Solver):
 
             mel, spec = mel[indices], spec[indices]
 
-
             mel = mel.to(device=self.device)
             spec = spec.to(device=self.device)
 
             # Forwarding
             mel_outputs, linear_outputs, attn = self.model(
-                    txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
+                txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
 
             mel_loss = self.criterion(mel_outputs, mel)
             # Count linear loss
             linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
-                        + 0.5 * self.criterion(linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
+                + 0.5 * \
+                self.criterion(
+                    linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
             loss = mel_loss + linear_loss
 
             mel_loss_avg += mel_loss.item()
@@ -326,34 +340,45 @@ class Trainer(Solver):
 
             NUM_GL = 5
             if curr_b < NUM_GL:
-                fig_spec = make_spec_figure(linear_outputs[0].cpu().numpy(), self.audio_processor)
+                fig_spec = make_spec_figure(
+                    linear_outputs[0].cpu().numpy(), self.audio_processor)
                 fig_attn = make_attn_figure(attn[0].cpu().numpy())
                 # Predicted audio signal
-                waveform = self.audio_processor.inv_spectrogram(linear_outputs[0].cpu().numpy().T)
+                waveform = self.audio_processor.inv_spectrogram(
+                    linear_outputs[0].cpu().numpy().T)
                 waveform = np.clip(waveform, -1, 1)
                 # Tensorboard
-                self.log_writer.add_figure('spectrogram-%d' % curr_b, fig_spec, self.step)
-                self.log_writer.add_figure('attn-%d' % curr_b, fig_attn, self.step)
-                self.log_writer.add_audio('wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
-            
+                self.log_writer.add_figure(
+                    'spectrogram-%d' % curr_b, fig_spec, self.step)
+                self.log_writer.add_figure(
+                    'attn-%d' % curr_b, fig_attn, self.step)
+                self.log_writer.add_audio(
+                    'wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
+
                 # Decode non-teacher-forced
-                mel_outputs, linear_outputs, attn = self.model([txt[0]], add_info=[add_info[0]] if add_info else None)
-                fig_spec = make_spec_figure(linear_outputs[0].cpu().numpy(), self.audio_processor)
+                mel_outputs, linear_outputs, attn = self.model(
+                    [txt[0]], add_info=[add_info[0]] if add_info else None)
+                fig_spec = make_spec_figure(
+                    linear_outputs[0].cpu().numpy(), self.audio_processor)
                 fig_attn = make_attn_figure(attn[0].cpu().numpy())
                 # Predicted audio signal
-                waveform = self.audio_processor.inv_spectrogram(linear_outputs[0].cpu().numpy().T)
+                waveform = self.audio_processor.inv_spectrogram(
+                    linear_outputs[0].cpu().numpy().T)
                 waveform = np.clip(waveform, -1, 1)
                 # Tensorboard
-                self.log_writer.add_figure('non-teacher-forced-spectrogram-%d' % curr_b, fig_spec, self.step)
-                self.log_writer.add_figure('non-teacher-forced-attn-%d' % curr_b, fig_attn, self.step)
-                self.log_writer.add_audio('non-teacher-forced-wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
-            
-    
+                self.log_writer.add_figure(
+                    'non-teacher-forced-spectrogram-%d' % curr_b, fig_spec, self.step)
+                self.log_writer.add_figure(
+                    'non-teacher-forced-attn-%d' % curr_b, fig_attn, self.step)
+                self.log_writer.add_audio(
+                    'non-teacher-forced-wav-%d' % curr_b, waveform, self.step, sample_rate=fs)
+
             # Perform Griffin-Lim to generate waveform: "GL"
-            header = '[GL-{}/{}]'.format(curr_b + 1, NUM_GL) if curr_b < NUM_GL else '[VAL-{}/{}]'.format(curr_b + 1, len(self.data_va))
+            header = '[GL-{}/{}]'.format(curr_b + 1, NUM_GL) if curr_b < NUM_GL else '[VAL-{}/{}]'.format(
+                curr_b + 1, len(self.data_va))
             # Terminal log
             log = header + ' total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}'.format(
-                    loss.item(), mel_loss.item(), linear_loss.item())
+                loss.item(), mel_loss.item(), linear_loss.item())
 
             self.progress(log)
 
@@ -361,13 +386,14 @@ class Trainer(Solver):
         linear_loss_avg /= len(self.data_va)
         total_loss_avg /= len(self.data_va)
 
-        self.verbose('@ step {} => total_loss: {:.3f}, mel_loss: {:.3f}, linear_loss: {:.3f}'.format(self.step, total_loss_avg, mel_loss_avg, linear_loss_avg))
+        self.verbose('@ step {} => total_loss: {:.3f}, mel_loss: {:.3f}, linear_loss: {:.3f}'.format(
+            self.step, total_loss_avg, mel_loss_avg, linear_loss_avg))
 
         self.write_log('Loss', {
-            'total_loss_val' : total_loss_avg,
-            'mel_loss_val'   : mel_loss_avg,
+            'total_loss_val': total_loss_avg,
+            'mel_loss_val': mel_loss_avg,
             'linear_loss_val': linear_loss_avg
-            })
+        })
         return linear_loss_avg
 
     def embed_similarity(self):
@@ -375,20 +401,24 @@ class Trainer(Solver):
         self.model.embedding.eval()
         diff_phoneme_feat = []
         for curr_b, (txt, text_lengths, mel, spec, add_info) in enumerate(self.data_va):
-            syll_nodes = [ d.syll_nodes for d in txt ]
-            prev_syll_nodes = [ np.insert(s[:-1], 0, -1) for s in syll_nodes ]
-            word_bound = [ np.append(np.where((s-p)!=1)[0], len(s)) for (s,p) in zip(syll_nodes, prev_syll_nodes) ]
+            syll_nodes = [d.syll_nodes for d in txt]
+            prev_syll_nodes = [np.insert(s[:-1], 0, -1) for s in syll_nodes]
+            word_bound = [np.append(np.where((s-p) != 1)[0], len(s))
+                          for (s, p) in zip(syll_nodes, prev_syll_nodes)]
             text_feat = self.model.embedding(txt).detach()     # B x S x D
             word_feat = []
-            for i,word in enumerate(word_bound):
-                for w,w1 in zip(word[:-1], word[1:]):
+            for i, word in enumerate(word_bound):
+                for w, w1 in zip(word[:-1], word[1:]):
                     word_feat.append(text_feat[i][w:w1])
-            avg_word_feat = [ wf.mean(axis=0) for wf in word_feat ]
-            diff_word_feat = [ (torch.sum(torch.abs(wf - awf)**2,axis=-1)**(1./2)).to('cpu') for wf,awf in zip(word_feat, avg_word_feat) ]
+            avg_word_feat = [wf.mean(axis=0) for wf in word_feat]
+            diff_word_feat = [(torch.sum(torch.abs(wf - awf)**2, axis=-1)**(1./2)).to('cpu')
+                              for wf, awf in zip(word_feat, avg_word_feat)]
             diff_phoneme_feat.append(np.concatenate(diff_word_feat).ravel())
         diff_phoneme_feat = np.concatenate(diff_phoneme_feat).ravel()
-        print ("Number of phonemes in total: %d" % len(diff_phoneme_feat))
-        sns.kdeplot(diff_phoneme_feat, shade=True, clip=(0,0.5))
-        plt.savefig('plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.density.png')
-        plt.hist(diff_phoneme_feat, bins=20, range=(0,0.25))
-        plt.savefig('plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.hist.png')
+        print("Number of phonemes in total: %d" % len(diff_phoneme_feat))
+        sns.kdeplot(diff_phoneme_feat, shade=True, clip=(0, 0.5))
+        plt.savefig(
+            'plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.density.png')
+        plt.hist(diff_phoneme_feat, bins=20, range=(0, 0.25))
+        plt.savefig(
+            'plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.hist.png')
