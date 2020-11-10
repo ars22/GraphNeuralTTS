@@ -213,14 +213,14 @@ class Trainer(Solver):
                     self.model.train()
 
                 if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
-                    self.save_ckpt()
+                    self.save_ckpt(tag="scheduled_save")
 
                 # Global step += 1
                 self.step += 1
                 local_step += 1
 
-    def save_ckpt(self):
-        ckpt_path = os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step))
+    def save_ckpt(self, tag=""):
+        ckpt_path = (os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0 else os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(self.step, tag)))
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),
