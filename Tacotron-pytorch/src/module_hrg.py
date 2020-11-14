@@ -19,7 +19,8 @@ from src.utils import get_tokens_from_additional_info
 class EmbeddingHRG(nn.Module):
     def __init__(self, n_vocab, embedding_size, hidden_size):
         super(EmbeddingHRG, self).__init__()
-        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.device = torch.device(
+            'cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.embedding = nn.Embedding(n_vocab, embedding_size)
         self.embedding.weight.data.normal_(0, 0.3)
         self.conv1 = GCNConv(embedding_size, hidden_size)
@@ -27,8 +28,8 @@ class EmbeddingHRG(nn.Module):
         self.conv3 = GCNConv(hidden_size, hidden_size)
         self.pad_vector = nn.Parameter(
             torch.randn(hidden_size), requires_grad=True)
-        
-        # initialization scheme from 
+
+        # initialization scheme from
         # https://github.com/festvox/festvox/blob/c7f6fa1b51a1ed6251148f8849fd879c2d7263f4/voices/arctic/rms/local/model.py#L193
         self.embedding.weight.data.uniform_(-0.1, 0.1)
 
@@ -56,7 +57,7 @@ class EmbeddingHRG(nn.Module):
         #  but only retain phone/syll nodes
         x, max_seq_len = self._break_into_utterances(x, batch)
         #  (num_utterances, ?, hidden_size), max_seq_len (max no. of syll nodes across utterances)
-        
+
         #  step 5: pad the gcn outputs of utterances with a random vector
         x = self._pad_embeddings(x, max_seq_len)
         #  (num_utterances, max_seq_len, hidden_size)
@@ -65,9 +66,9 @@ class EmbeddingHRG(nn.Module):
     def _assign_node_features(self, graphs: List[Data]) -> Data:
         res = []
         for graph in graphs:
-            res.append(Data(x=self.embedding(graph.x.to(self.device)), edge_index=graph.edge_index, syll_nodes=graph.syll_nodes))
+            res.append(Data(x=self.embedding(graph.x.to(self.device)),
+                            edge_index=graph.edge_index, syll_nodes=graph.syll_nodes))
         return res
-
 
     def _gcn(self, batch):
         """Runs GCN over a pytorch geom batch
@@ -105,31 +106,47 @@ class EmbeddingHRG(nn.Module):
         for gcn_output in x:
             res.append(torch.cat(
                 [gcn_output, self.pad_vector.repeat(max_seq_len - gcn_output.shape[0], 1)], dim=0))
-        return torch.stack(res ,dim=0)
+        return torch.stack(res, dim=0)
 
 
+class InfoEmbeddingModule(nn.Module):
+    def __init__(self, input_sz: int, output_sz: int) -> None:
+        super(InfoEmbeddingModule, self).__init__()
+        self.input_sz = input_sz
+        self.output_sz = output_sz
+        self.mlp = nn.Linear(input_sz, output_sz)
+
+    def forward(self, x):
+        # x.shape -> (bsz, y)
+        return self.mlp(x)
 
 
 class TacotronHRG(nn.Module):
-    def __init__(self, n_vocab, embedding_size=256, gcn_hidden_size=128, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
-            add_info_headers=[], n_add_info_vocab=0):
+    def __init__(self, n_vocab, embedding_size=256, gcn_hidden_size=128, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5,
+                 add_info_headers=[], n_add_info_vocab=0):
         super(TacotronHRG, self).__init__()
         self.mel_size = mel_size
         self.linear_size = linear_size
         # main embedding for HRGs
-        self.embedding = EmbeddingHRG(n_vocab, hidden_size=gcn_hidden_size, embedding_size=embedding_size)
+        self.embedding = EmbeddingHRG(
+            n_vocab, hidden_size=gcn_hidden_size, embedding_size=embedding_size)
         # if there are additional headers, create an embedding file for each
         self.add_info_headers = add_info_headers
         self.add_info_embedding = nn.Sequential(OrderedDict([
             (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
             for header in self.add_info_headers
         ]))
-        
+        self.info_embeddings_mlp = InfoEmbeddingModule(input_sz=add_info_embedding_size * len(add_info_headers),
+                                                   output_sz=embedding_size)
         for header in self.add_info_headers:
-            self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
+            self.add_info_embedding._modules[header].weight.data.normal_(
+                0, 0.3)
         # the embedding size scales with more additional headers
         self.encoder = Encoder(embedding_size)
-        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
+        # self.mel_decoder = MelDecoder(
+        #     mel_size, r, add_info_headers, add_info_embedding_size)
+        self.mel_decoder = MelDecoder(
+            mel_size, r, add_info_embedding_size=add_info_embedding_size)  #  HACK to set add_info_headers to None
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
@@ -138,17 +155,19 @@ class TacotronHRG(nn.Module):
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
-
         # if there are additional headers like speaker or accent we
         # append them to encoder output
         if len(self.add_info_headers):
             additional_embeddings = []
             for header in self.add_info_headers:
-                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
+                add_info_tensor = get_tokens_from_additional_info(
+                    add_info, header).to(encoder_outputs.device)
                 additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
-            encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
-            # encoder_outputs now has concatenated embeddings
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1))
+
+            additional_embeddings = self.info_embeddings_mlp(torch.cat(additional_embeddings, dim=-1))
+            # add info embeddings in the beginning
+            encoder_outputs = torch.cat([additional_embeddings, encoder_outputs], dim=1)
 
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
         # Reshape mel_outputs
@@ -157,4 +176,3 @@ class TacotronHRG(nn.Module):
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
         return mel_outputs, linear_outputs, alignments
-
