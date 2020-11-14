@@ -230,7 +230,7 @@ class Trainer(Solver):
         ckpt_path = (
             os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0
             else
-            os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(self.step, tag)))
+            os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(tag, self.step)))
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),
