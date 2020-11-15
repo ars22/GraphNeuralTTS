@@ -79,15 +79,8 @@ class EmbeddingHRG(nn.Module):
             [type]: [description]
         """
         x, edge_index = batch.x, batch.edge_index
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.dropout(x, p=0.3, training=self.training)
+        return batch.x
 
-        # x = F.relu(self.conv2(x, edge_index))
-
-        x = self.conv3(x, edge_index)
-        x = F.dropout(x, p=0.3, training=self.training)
-
-        return x
 
     def _break_into_utterances(self, x, batch):
         offset = 0
