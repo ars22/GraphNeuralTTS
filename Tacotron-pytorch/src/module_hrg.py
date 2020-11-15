@@ -10,7 +10,7 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.data.batch import Batch
 from torch_geometric.data import Data
 from torch_geometric.nn import SGConv
-from .module import CBHG, Encoder, MelDecoder
+from .module import CBHG, Encoder, MelDecoder, BatchNormConv1d
 from typing import List
 from collections import OrderedDict
 from src.utils import get_tokens_from_additional_info
@@ -124,37 +124,65 @@ class TacotronHRG(nn.Module):
             (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
             for header in self.add_info_headers
         ]))
+        # for param in self.add_info_embedding.parameters():
+        #     param.requires_grad = False
         
         for header in self.add_info_headers:
             self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
         # the embedding size scales with more additional headers
-        self.encoder = Encoder(embedding_size)
-        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
+        self.encoder = Encoder(embedding_size + add_info_embedding_size*len(add_info_headers))
+        self.mel_decoder = MelDecoder(mel_size, r, [], add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
+        
+        # self.mlp_combine_accent = BatchNormConv1d(
+        #     in_size=len(add_info_headers)*add_info_embedding_size + 2*embedding_size, 
+        #     out_size=len(add_info_headers)*add_info_embedding_size + 2*embedding_size, 
+        #     kernel_size=3, stride=1,
+        #     padding=1, activation=nn.ReLU()
+        # )
+        # self.mel_to_acc = nn.Sequential(
+        #     nn.Linear(mel_size, 2),
+        #     nn.ReLU(),
+        #     nn.Linear(2, len(add_info_headers) * add_info_embedding_size)   
+        # )
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         txt_feat = self.embedding(texts)
+
+        # if there are additional headers like speaker or accent we
+        # append them to txt_feat
+        if len(self.add_info_headers):
+            additional_embeddings = []
+            for header in self.add_info_headers:
+                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(txt_feat.device)
+                additional_embeddings.append(
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, txt_feat.size(1), 1))
+            txt_feat = torch.cat([txt_feat] + additional_embeddings, dim=-1)
+            # txt_feat now has concatenated embeddings
+
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
         encoder_outputs = self.encoder(txt_feat, text_lengths)
 
-        # if there are additional headers like speaker or accent we
-        # append them to encoder output
-        if len(self.add_info_headers):
-            additional_embeddings = []
-            for header in self.add_info_headers:
-                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
-                additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
-            encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
-            # encoder_outputs now has concatenated embeddings
-
+        
         mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
         # Reshape mel_outputs
         # -> (batch_size, timesteps (decoder), mel_size)
         mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
+        
+        # add_info_loss = None
+        # if len(self.add_info_headers):
+        #     acc_emb_preds = self.mel_to_acc(mel_outputs.mean(1))
+        #     additional_embeddings = []
+        #     for header in self.add_info_headers:
+        #         add_info_tensor = get_tokens_from_additional_info(add_info, header).to(mel_outputs.device)
+        #         additional_embeddings.append(
+        #             self.add_info_embedding._modules[header](add_info_tensor))
+        #     additional_embeddings = torch.cat(additional_embeddings, dim=-1)
+        #     add_info_loss = torch.mean((additional_embeddings - acc_emb_preds)**2)
+        
         return mel_outputs, linear_outputs, alignments
 

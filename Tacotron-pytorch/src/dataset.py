@@ -68,6 +68,7 @@ class VocabAddInfo:
             [type]: [HRGVocab]
         """
         tok2id = {}
+        tok2id["<UNK>"] = len(tok2id)
         for add_info_dict in dataset:
             if add_info_dict[entity] not in tok2id:
                 tok2id[add_info_dict[entity]] = len(tok2id)

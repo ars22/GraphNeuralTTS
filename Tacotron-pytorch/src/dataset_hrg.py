@@ -22,6 +22,9 @@ def getDataLoader(mode, meta_path, data_dir, batch_size, r, n_jobs, use_gpu, **k
     else:
         raise NotImplementedError
 
+    # for training with sorted dataset
+    # shuffle = False
+    
     vocab = kwargs["vocab"] if "vocab" in kwargs else None
     add_info_vocab = kwargs["add_info_vocab"] if "add_info_vocab" in kwargs else None
     add_info_headers = kwargs["add_info_headers"] if "add_info_headers" in kwargs else None
@@ -239,6 +242,7 @@ class MyDatasetAddInfo(Dataset):
         # add_info_vocab: None only for Train
 
         meta = {'id':[], 'hrg':[], 'mel': [], 'spec': [], 'add_info': []}
+        print(meta_path)
         with open(meta_path) as f:
             for line in f.readlines():
                 # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
@@ -250,7 +254,11 @@ class MyDatasetAddInfo(Dataset):
                 meta['mel'].append(fmel)
                 meta['spec'].append(fspec)
                 meta['add_info'].append(add_info)
-
+        
+        # indices_once_sort_by_text = np.argsort([" ".join([w["word"] for w in json.loads(t)]) for t in meta['hrg']])
+        # for key in meta:
+        #     meta[key] = [meta[key][idx] for idx in indices_once_sort_by_text]
+        
         # Separate text and additional info
         self.add_info = [ json.loads(t) for t in meta['add_info'] ]
         headers = add_info_headers
