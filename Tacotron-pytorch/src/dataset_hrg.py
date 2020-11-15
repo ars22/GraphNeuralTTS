@@ -274,7 +274,7 @@ class MyDatasetAddInfo(Dataset):
             self.add_info_vocab = add_info_vocab
         
         # Convert to ids
-        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
+        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in headers} for t in self.add_info ]
         # get max vocab size for all the additional info
         self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
 
