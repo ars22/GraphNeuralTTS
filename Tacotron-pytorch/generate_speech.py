@@ -61,6 +61,10 @@ def generate_speech(args):
             else:
                 graphs = graphs[indices]
                 graphs = graphs.to(device=torch.device('cuda') if args.gpu else torch.device('cpu'))
+
+            if add_info:
+                add_info = [add_info[idx] for idx in indices]
+
             
             mel, spec, attn = model(graphs, text_lengths=sorted_lengths, add_info=add_info)
             # Generate wav file
