@@ -13,7 +13,7 @@ from torch_geometric.data import Batch
 from matplotlib import pyplot as plt
 
 # Imports based on HRG or No HRG
-MODE = "HRG"
+MODE = "CHAR"
 print("MODE : ", MODE)
 if MODE == "HRG":
     from .dataset_hrg import getDataLoader
@@ -151,6 +151,10 @@ class Trainer(Solver):
                     text_lengths.view(-1), dim=0, descending=True)
                 indices = indices.long().numpy()
                 sorted_lengths = sorted_lengths.long().numpy()
+                if len(sorted_lengths) == 0:
+                    print (add_info)
+                    assert False
+
                 if type(txt) == list:
                     txt = [txt[idx] for idx in indices]
                 else:
@@ -159,7 +163,12 @@ class Trainer(Solver):
                 if add_info:
                     add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
+<<<<<<< HEAD
 
+=======
+                add_info = [ add_info[i] for i in indices ]
+                
+>>>>>>> c4c3f14443d6fdec46ce655ff4d41b3bcb106437
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
 
@@ -226,11 +235,15 @@ class Trainer(Solver):
                 local_step += 1
 
     def save_ckpt(self, tag=""):
+<<<<<<< HEAD
 
         ckpt_path = (
             os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0
             else
             os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(tag, self.step)))
+=======
+        ckpt_path = (os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0 else os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(self.step, tag)))
+>>>>>>> c4c3f14443d6fdec46ce655ff4d41b3bcb106437
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),

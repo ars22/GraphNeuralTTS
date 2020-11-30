@@ -90,7 +90,7 @@ def load_ckpt(args, config, ckpt_path):
     if MODE == "HRG":
         config['model']['tacotron']['n_vocab'] = vocab.n_vocab
     if add_info_vocab:
-        config['model']['tacotron']['n_add_info_vocab'] = max([add_info_vocab[h].n_vocab for h in add_info_vocab])
+        config['model']['tacotron']['n_add_info_vocab'] = {h:add_info_vocab[h].n_vocab for h in add_info_vocab}
         config['model']['tacotron']['add_info_headers'] = list(add_info_vocab.keys())
     model = Tacotron(**config['model']['tacotron'])
     model.load_state_dict(ckpt['state_dict'])
