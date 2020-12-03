@@ -287,6 +287,103 @@ class MelDecoder(nn.Module):
         return (output.data <= eps).all()
 
 
+class AllophoneDecoder(nn.Module):
+
+    def __init__(self, out_size, add_info_embedding_size={}):
+        super(MelDecoder, self).__init__()
+        self.add_info_embedding_size = add_info_embedding_size
+        self.concatenated_additional_embedding_size = sum([ a[1] for a in add_info_embedding_size.items() if a[0] != "allophone"])
+        self.out_size = out_size
+        # self.prenet = Prenet(in_size * r, hidden_sizes=[256, 128])
+        # Input: (prenet output, previous context)
+        self.attn_rnn = AttnWrapper(
+            nn.GRUCell(256 + self.out_size + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
+            BahdanauAttn(256 + self.concatenated_additional_embedding_size))
+        self.memory_layer = nn.Linear(
+            256 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size, bias=False)
+        # RNN decoder in the original paper
+        self.pre_rnn_dec_proj = nn.Linear(512 + 2*self.concatenated_additional_embedding_size, 128)
+        self.rnns_dec = nn.ModuleList(
+                [nn.GRUCell(128, 128) for _ in range(1)])
+        self.mel_proj = nn.Linear(128, out_size)
+        self.max_decode_steps = 100
+
+    def forward(self, encoder_outputs, inputs=None):
+        """
+        Args:
+            encoder_outputs: shape (batch_size, timesteps, feature_size)
+            inputs: decoder inputs
+        """
+        batch_size = encoder_outputs.size(0)
+        processed_mem = self.memory_layer(encoder_outputs)
+        # Greedy decode if inputs is None
+        greedy = inputs is None
+
+        # -> (T_decoder, batch_size, in_size * r)
+        if not greedy:
+            inputs = inputs.view(batch_size, inputs.size(1), -1)
+            inputs = inputs.transpose(0, 1)
+            T_dec = inputs.size(0)
+
+        # [GO] frames
+        init_input = encoder_outputs.data.new(batch_size, self.out_size).zero_()
+        # hidden of attn_rnn
+        attn_rnn_hidden = encoder_outputs.data.new(batch_size,
+            256 + self.concatenated_additional_embedding_size).zero_()
+        # hidden of rnn decoder
+        rnns_dec_hidden = [encoder_outputs.data.new(batch_size, 256).zero_()
+                for _ in range(len(self.rnns_dec))]
+        # current attention context
+        curr_ctx = encoder_outputs.data.new(batch_size,
+            256 + self.concatenated_additional_embedding_size).zero_()
+
+        outputs = []
+        alignments = []
+
+        t = 0
+        while True:
+            if t == 0:
+                curr_input = init_input
+            else:
+                curr_input = outputs[-1] if greedy else inputs[t-1]
+
+            # curr_input = self.prenet(curr_input)
+            attn_rnn_hidden, curr_ctx, alignment = self.attn_rnn(
+                    curr_input, curr_ctx, attn_rnn_hidden, encoder_outputs, processed_mem)
+
+            # Concatenate RNN output and attention context
+            decoder_input = self.pre_rnn_dec_proj(
+                    torch.cat([attn_rnn_hidden, curr_ctx], -1))
+            # Feed into rnn decoders
+            for i in range(len(self.rnns_dec)):
+                rnns_dec_hidden[i] = self.rnns_dec[i](decoder_input, rnns_dec_hidden[i])
+                # Residual connection
+                decoder_input = rnns_dec_hidden[i] + decoder_input
+
+            output = self.mel_proj(decoder_input)
+            # output = self.final_softmax(output)
+            outputs += [output]
+            alignments += [alignment]
+            t += 1
+
+            if greedy:
+                if (t > 1 and self.is_eof(output)) or \
+                   (t > self.max_decode_steps):
+                    break
+            else:
+                if t >= T_dec:
+                    break
+
+        assert greedy or len(outputs) == T_dec
+        # Convert back to batch first
+        alignments = torch.stack(alignments).transpose(0, 1)
+        outputs = torch.stack(outputs).transpose(0, 1).contiguous()
+        return outputs, alignments
+
+    def is_eof(self, output, eps=0.2):
+        """Detect end of frames"""
+        return (output.data <= eps).all()
+
 class Tacotron(nn.Module):
     def __init__(self, n_vocab, embedding_size=256, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
             add_info_headers=[], n_add_info_vocab={}):
@@ -294,6 +391,7 @@ class Tacotron(nn.Module):
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.mel_size = mel_size
         self.linear_size = linear_size
+        self.n_add_info_vocab = n_add_info_vocab
         # main embedding for characters
         self.embedding = nn.Embedding(n_vocab, embedding_size)
         # if there are additional headers, create an embedding file for each
@@ -315,6 +413,9 @@ class Tacotron(nn.Module):
         self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
+
+        self.allophone_decoder = AllophoneDecoder(n_add_info_vocab["allophone"], add_info_embedding_size)
+        self.allophone_softmax = nn.Softmax(dim=-1)
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         batch_size = len(texts)
@@ -348,5 +449,10 @@ class Tacotron(nn.Module):
         mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
-        return mel_outputs, linear_outputs, alignments
+
+        allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs)    # Non-teacher forced training
+        allo_outputs = allo_outputs.view(batch_size, -1, self.n_add_info_vocab["allophone"])
+        allo_outputs = self.allophone_softmax(allo_outputs)
+
+        return mel_outputs, linear_outputs, alignments, allo_outputs, allo_alignments
 

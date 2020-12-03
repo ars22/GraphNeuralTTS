@@ -250,9 +250,9 @@ def collate_fn(batch, r):
             else:
                 for i, _ in enumerate(add_info):
                     new_add_info[i][h] = add_info[i][h]
-        allophone_lengths = np.array([ (a["allophone"] != 0).sum() for a in new_add_info])
-        return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, new_add_info
-        # return ids, x_batch, input_lengths, mel_batch, spec_batch, add_info
+        # allophone_lengths = np.array([ (a["allophone"] != 0).sum() for a in new_add_info])
+        # return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, new_add_info
+        return ids, x_batch, input_lengths, mel_batch, spec_batch, new_add_info
     else:
         return ids, x_batch, input_lengths, mel_batch, spec_batch, None
 
