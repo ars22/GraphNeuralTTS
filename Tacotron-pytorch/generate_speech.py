@@ -70,7 +70,7 @@ def generate_speech(args):
             # Generate wav file
             num_files_to_write = len(graphs)
             for (new_idx, orig_idx) in tqdm(enumerate(indices), desc="Generating speech"):
-                wav = ap.inv_spectrogram(spec[new_idx].cpu().numpy().T)
+                wav = ap.inv_spectrogram(spec[orig_idx].cpu().numpy().T)
                 savename =  "{}/{}.wav".format(args.output_dir, id[orig_idx])
                 if add_info is not None:
                     accent = inference_dataloader.dataset.add_info_vocab["accent"].id2tok[add_info[orig_idx]["accent"]]
