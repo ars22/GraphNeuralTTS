@@ -290,22 +290,26 @@ class MelDecoder(nn.Module):
 class AllophoneDecoder(nn.Module):
 
     def __init__(self, out_size, add_info_embedding_size={}):
-        super(MelDecoder, self).__init__()
+        super(AllophoneDecoder, self).__init__()
+        self.rnn_size = 128
+        self.rnn_input_size = 128
         self.add_info_embedding_size = add_info_embedding_size
         self.concatenated_additional_embedding_size = sum([ a[1] for a in add_info_embedding_size.items() if a[0] != "allophone"])
         self.out_size = out_size
         # self.prenet = Prenet(in_size * r, hidden_sizes=[256, 128])
         # Input: (prenet output, previous context)
+        # TODO: Add input embedding
         self.attn_rnn = AttnWrapper(
             nn.GRUCell(256 + self.out_size + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
             BahdanauAttn(256 + self.concatenated_additional_embedding_size))
         self.memory_layer = nn.Linear(
             256 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size, bias=False)
         # RNN decoder in the original paper
-        self.pre_rnn_dec_proj = nn.Linear(512 + 2*self.concatenated_additional_embedding_size, 128)
+        self.pre_rnn_dec_proj = nn.Linear(512 + 2*self.concatenated_additional_embedding_size, self.rnn_input_size)
         self.rnns_dec = nn.ModuleList(
-                [nn.GRUCell(128, 128) for _ in range(1)])
-        self.mel_proj = nn.Linear(128, out_size)
+                [nn.GRUCell(self.rnn_input_size, self.rnn_size) for _ in range(1)])
+        self.mel_proj = nn.Linear(self.rnn_size, out_size)
+        self.final_softmax = nn.Softmax(dim=-1)
         self.max_decode_steps = 100
 
     def forward(self, encoder_outputs, inputs=None):
@@ -331,7 +335,7 @@ class AllophoneDecoder(nn.Module):
         attn_rnn_hidden = encoder_outputs.data.new(batch_size,
             256 + self.concatenated_additional_embedding_size).zero_()
         # hidden of rnn decoder
-        rnns_dec_hidden = [encoder_outputs.data.new(batch_size, 256).zero_()
+        rnns_dec_hidden = [encoder_outputs.data.new(batch_size, self.rnn_size).zero_()
                 for _ in range(len(self.rnns_dec))]
         # current attention context
         curr_ctx = encoder_outputs.data.new(batch_size,
@@ -361,7 +365,7 @@ class AllophoneDecoder(nn.Module):
                 decoder_input = rnns_dec_hidden[i] + decoder_input
 
             output = self.mel_proj(decoder_input)
-            # output = self.final_softmax(output)
+            output = self.final_softmax(output)
             outputs += [output]
             alignments += [alignment]
             t += 1
@@ -410,11 +414,11 @@ class Tacotron(nn.Module):
             self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
         # the embedding size scales with more additional headers
         self.encoder = Encoder(embedding_size)
-        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
+        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, self.add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
-        self.allophone_decoder = AllophoneDecoder(n_add_info_vocab["allophone"], add_info_embedding_size)
+        self.allophone_decoder = AllophoneDecoder(n_add_info_vocab["allophone"], self.add_info_embedding_size)
         self.allophone_softmax = nn.Softmax(dim=-1)
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
@@ -428,8 +432,8 @@ class Tacotron(nn.Module):
             allophone_embedding = self.add_info_embedding._modules["allophone"](add_info_tensor)
 
         # -> (batch_size, timesteps (encoder), text_dim)
-        # encoder_outputs = self.encoder(txt_feat, text_lengths)
-        encoder_outputs = self.encoder(allophone_embedding, text_lengths)
+        encoder_outputs = self.encoder(txt_feat, text_lengths)
+        # encoder_outputs = self.encoder(allophone_embedding, text_lengths)
 
         # if there are additional headers like speaker or accent we
         # append them to encoder output

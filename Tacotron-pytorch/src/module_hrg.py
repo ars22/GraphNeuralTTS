@@ -10,7 +10,7 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.data.batch import Batch
 from torch_geometric.data import Data
 from torch_geometric.nn import SGConv
-from .module import CBHG, Encoder, MelDecoder
+from .module import CBHG, Encoder, MelDecoder, AllophoneDecoder
 from typing import List
 from collections import OrderedDict
 from src.utils import get_tokens_from_additional_info
@@ -112,31 +112,47 @@ class EmbeddingHRG(nn.Module):
 
 class TacotronHRG(nn.Module):
     def __init__(self, n_vocab, embedding_size=256, gcn_hidden_size=128, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
-            add_info_headers=[], n_add_info_vocab=0):
+            add_info_headers=[], n_add_info_vocab={}):
         super(TacotronHRG, self).__init__()
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.mel_size = mel_size
         self.linear_size = linear_size
+        self.n_add_info_vocab = n_add_info_vocab
         # main embedding for HRGs
         self.embedding = EmbeddingHRG(n_vocab, hidden_size=gcn_hidden_size, embedding_size=embedding_size)
         # if there are additional headers, create an embedding file for each
         self.add_info_headers = add_info_headers
+        if not isinstance(add_info_embedding_size, dict):
+            self.add_info_embedding_size = {h:add_info_embedding_size for h in self.add_info_headers}
+        else:
+            self.add_info_embedding_size = add_info_embedding_size
+
         self.add_info_embedding = nn.Sequential(OrderedDict([
-            (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
-            for header in self.add_info_headers
+            (header, nn.Embedding(self.n_add_info_vocab[header], self.add_info_embedding_size[header]))
+            for header in self.add_info_headers if header != "allophone"
         ]))
         
         for header in self.add_info_headers:
-            self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
+            if header != "allophone":
+                self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
         # the embedding size scales with more additional headers
         self.encoder = Encoder(embedding_size)
-        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
+        self.mel_decoder = MelDecoder(mel_size, r, self.add_info_headers, self.add_info_embedding_size)
         self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
         self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
-    def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
+        self.allophone_decoder = AllophoneDecoder(self.n_add_info_vocab["allophone"], self.add_info_embedding_size)
+        self.allophone_softmax = nn.Softmax(dim=-1)
+
+    def forward(self, texts, add_info=None, melspec=None, text_lengths=None, allo_input=None):
         txt_feat = self.embedding(texts)
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
+
+        # if len(self.add_info_headers) and "allophone" in self.add_info_headers:
+        #     add_info_tensor = get_tokens_from_additional_info(add_info, "allophone").to(self.device)
+        #     allophone_embedding = self.add_info_embedding._modules["allophone"](add_info_tensor)
+        
         encoder_outputs = self.encoder(txt_feat, text_lengths)
 
         # if there are additional headers like speaker or accent we
@@ -144,9 +160,10 @@ class TacotronHRG(nn.Module):
         if len(self.add_info_headers):
             additional_embeddings = []
             for header in self.add_info_headers:
-                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
-                additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
+                if header != "allophone":
+                    add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
+                    additional_embeddings.append(
+                        self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
             encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
             # encoder_outputs now has concatenated embeddings
 
@@ -156,5 +173,13 @@ class TacotronHRG(nn.Module):
         mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
-        return mel_outputs, linear_outputs, alignments
+
+        allo_input_onehot = torch.FloatTensor(allo_input.shape[0], allo_input.shape[1], self.n_add_info_vocab["allophone"]).to(self.device)
+        allo_input_onehot.zero_()
+        allo_input_onehot.scatter_(2, allo_input.unsqueeze(dim=2), 1)
+        allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs, allo_input_onehot)    # Non-teacher forced training
+        allo_outputs = allo_outputs.view(batch_size, -1, self.n_add_info_vocab["allophone"])
+        allo_outputs = self.allophone_softmax(allo_outputs)
+
+        return mel_outputs, linear_outputs, alignments, allo_outputs, allo_alignments
 

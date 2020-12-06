@@ -13,7 +13,7 @@ from torch_geometric.data import Batch
 from matplotlib import pyplot as plt
 
 # Imports based on HRG or No HRG
-MODE = "CHAR"
+MODE = "HRG"
 print("MODE : ", MODE)
 if MODE == "HRG":
     from .dataset_hrg import getDataLoader
@@ -114,12 +114,12 @@ class Trainer(Solver):
         self.model = Tacotron(
             **self.config['model']['tacotron']).to(device=self.device)
         self.criterion = torch.nn.L1Loss()
-        self.allo_criterion = torch.nn.CrossEntropyLoss()
+        self.allo_criterion = torch.nn.NLLLoss()
 
         # Optimizer
         _config = self.config['model']
         lr = _config['optimizer']['lr']
-        self.lambda_allophone = _config['optimizer']['lambda_allophone']
+        self.lambda_allophone = self.config['solver']['lambda_allophone']
         optim_type = _config['optimizer'].pop('type', 'Adam')
         self.optim = getattr(torch.optim, optim_type)
         self.optim = self.optim(self.model.parameters(),
@@ -161,7 +161,7 @@ class Trainer(Solver):
                     txt = txt.to(device=self.device)
                 if add_info:
                     add_info = [add_info[idx] for idx in indices]
-                    allophones = [a["allophone"] for a in add_info]
+                    allophones = torch.Tensor([a["allophone"] for a in add_info]).long().to(self.device)
                 mel, spec = mel[indices], spec[indices]
                 
                 mel = mel.to(device=self.device)
@@ -173,16 +173,19 @@ class Trainer(Solver):
                 # Forwarding
                 self.optim.zero_grad()
                 mel_outputs, linear_outputs, attn, allo_outputs, allo_attn = self.model(
-                    txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
+                    txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths, allo_input=allophones)
                 mel_loss = self.criterion(mel_outputs, mel)
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                     + 0.5 * \
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
-                allo_loss = self.allo_criterion(allo_outputs, allophones)
 
-                loss = mel_loss + linear_loss + self.lambda_allophone * allo_loss
+                print (allo_outputs, allophones)
+                allo_loss = self.allo_criterion(allo_outputs.transpose(1,2), allophones)
+                # print (mel_loss, linear_loss, -allo_loss)
+
+                loss = mel_loss + linear_loss - self.lambda_allophone * allo_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme

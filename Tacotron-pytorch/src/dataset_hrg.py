@@ -260,15 +260,18 @@ class MyDatasetAddInfo(Dataset):
             print("Creating add_info vocab")
             self.add_info_vocab = {}
             for h in headers:
-                self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
+                if h == "allophone":
+                    self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h, is_list=True, pad_token="<PAD>")
+                else:
+                    self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
         else:
             print("Reusing add_info vocab")
             self.add_info_vocab = add_info_vocab
         
         # Convert to ids
-        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
+        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in headers} for t in self.add_info ]
         # get max vocab size for all the additional info
-        self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
+        self.n_add_info_vocab = {h:self.add_info_vocab[h].n_vocab for h in headers}
 
         # make vocab for HRG
         if vocab is None:
@@ -334,6 +337,18 @@ def collate_fn(batch, r):
     
     if num_inputs > 4:
         add_info = [x[-1] for x in batch]
-        return ids, x_batch, n_phone_nodes, mel_batch, spec_batch, add_info
+        new_add_info = [ {} for x in batch ]
+        headers = list(add_info[0].keys())
+        for h in headers:
+            if isinstance(add_info[0][h], list):
+                max_allophone_length = np.max(np.array([len(a[h]) for a in add_info]))
+                for i, _ in enumerate(add_info):
+                    new_add_info[i][h] = _pad(add_info[i][h], max_allophone_length)
+            else:
+                for i, _ in enumerate(add_info):
+                    new_add_info[i][h] = add_info[i][h]
+        # allophone_lengths = np.array([ (a["allophone"] != 0).sum() for a in new_add_info])
+        # return ids, x_batch, torch.LongTensor(allophone_lengths), mel_batch, spec_batch, new_add_info
+        return ids, x_batch, n_phone_nodes, mel_batch, spec_batch, new_add_info
     else:
         return ids, x_batch, n_phone_nodes, mel_batch, spec_batch, None
