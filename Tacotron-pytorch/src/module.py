@@ -294,13 +294,18 @@ class AllophoneDecoder(nn.Module):
         self.rnn_size = 128
         self.rnn_input_size = 128
         self.add_info_embedding_size = add_info_embedding_size
+        self.attn_input_size = self.add_info_embedding_size["allophone"]
+        
         self.concatenated_additional_embedding_size = sum([ a[1] for a in add_info_embedding_size.items() if a[0] != "allophone"])
         self.out_size = out_size
         # self.prenet = Prenet(in_size * r, hidden_sizes=[256, 128])
         # Input: (prenet output, previous context)
         # TODO: Add input embedding
+        self.allophone_embedding = nn.Embedding(out_size, self.add_info_embedding_size["allophone"])
+        self.allophone_embedding.weight.data.normal_(0, 0.3)
+
         self.attn_rnn = AttnWrapper(
-            nn.GRUCell(256 + self.out_size + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
+            nn.GRUCell(256 + self.attn_input_size + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size),
             BahdanauAttn(256 + self.concatenated_additional_embedding_size))
         self.memory_layer = nn.Linear(
             256 + self.concatenated_additional_embedding_size, 256 + self.concatenated_additional_embedding_size, bias=False)
@@ -325,12 +330,12 @@ class AllophoneDecoder(nn.Module):
 
         # -> (T_decoder, batch_size, in_size * r)
         if not greedy:
-            inputs = inputs.view(batch_size, inputs.size(1), -1)
+            # inputs = inputs.view(batch_size, inputs.size(1), -1)
             inputs = inputs.transpose(0, 1)
             T_dec = inputs.size(0)
 
         # [GO] frames
-        init_input = encoder_outputs.data.new(batch_size, self.out_size).zero_()
+        init_input = encoder_outputs.data.new(batch_size, self.out_size).zero_() if greedy else encoder_outputs.data.new(batch_size, self.add_info_embedding_size["allophone"]).zero_()
         # hidden of attn_rnn
         attn_rnn_hidden = encoder_outputs.data.new(batch_size,
             256 + self.concatenated_additional_embedding_size).zero_()
@@ -349,7 +354,11 @@ class AllophoneDecoder(nn.Module):
             if t == 0:
                 curr_input = init_input
             else:
-                curr_input = outputs[-1] if greedy else inputs[t-1]
+                if greedy:
+                    curr_input = outputs[-1]
+                else:
+                    curr_input = inputs[t-1]
+                    curr_input = self.allophone_embedding(curr_input)
 
             # curr_input = self.prenet(curr_input)
             attn_rnn_hidden, curr_ctx, alignment = self.attn_rnn(
@@ -358,6 +367,7 @@ class AllophoneDecoder(nn.Module):
             # Concatenate RNN output and attention context
             decoder_input = self.pre_rnn_dec_proj(
                     torch.cat([attn_rnn_hidden, curr_ctx], -1))
+            
             # Feed into rnn decoders
             for i in range(len(self.rnns_dec)):
                 rnns_dec_hidden[i] = self.rnns_dec[i](decoder_input, rnns_dec_hidden[i])

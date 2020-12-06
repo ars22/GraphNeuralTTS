@@ -177,9 +177,9 @@ class TacotronHRG(nn.Module):
         allo_input_onehot = torch.FloatTensor(allo_input.shape[0], allo_input.shape[1], self.n_add_info_vocab["allophone"]).to(self.device)
         allo_input_onehot.zero_()
         allo_input_onehot.scatter_(2, allo_input.unsqueeze(dim=2), 1)
-        allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs, allo_input_onehot)    # Non-teacher forced training
+        allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs, allo_input)    # Non-teacher forced training
         allo_outputs = allo_outputs.view(batch_size, -1, self.n_add_info_vocab["allophone"])
-        allo_outputs = self.allophone_softmax(allo_outputs)
+        # allo_outputs = self.allophone_softmax(allo_outputs)
 
         return mel_outputs, linear_outputs, alignments, allo_outputs, allo_alignments
 

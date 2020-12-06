@@ -181,9 +181,9 @@ class Trainer(Solver):
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                print (allo_outputs, allophones)
+                # print (allo_outputs, allophones)
                 allo_loss = self.allo_criterion(allo_outputs.transpose(1,2), allophones)
-                # print (mel_loss, linear_loss, -allo_loss)
+                print (mel_loss, linear_loss, -allo_loss)
 
                 loss = mel_loss + linear_loss - self.lambda_allophone * allo_loss
                 loss.backward()
