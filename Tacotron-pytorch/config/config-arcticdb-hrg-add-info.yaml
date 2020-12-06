@@ -20,8 +20,9 @@ model:
 
     tacotron:
         n_vocab: 250 # Use a larger vocab size is ok.
-        embedding_size: 128
-        add_info_embedding_size: 32
+        embedding_size: 256
+        add_info_embedding_size: 128
+        gcn_hidden_size: 256
         mel_size: 80
         linear_size: 1025
         r: 7
@@ -39,4 +40,4 @@ solver:
     save_checkpoint_interval: 10000
     # log
     log_interval: 10
-    add_info_headers: ["speaker", "accent", "gender"]
+    add_info_headers: ["speaker"]

@@ -14,6 +14,9 @@ from .module import CBHG, Encoder, MelDecoder
 from typing import List
 from collections import OrderedDict
 from src.utils import get_tokens_from_additional_info
+from src.falcon.models import *
+from src.falcon.blocks import *
+from src.falcon.layers import *
 
 
 class EmbeddingHRG(nn.Module):
@@ -110,51 +113,76 @@ class EmbeddingHRG(nn.Module):
 
 
 
-class TacotronHRG(nn.Module):
+class TacotronHRG(TacotronOneSeqwise):
     def __init__(self, n_vocab, embedding_size=256, gcn_hidden_size=128, add_info_embedding_size=32, mel_size=80, linear_size=1025, r=5, 
             add_info_headers=[], n_add_info_vocab=0):
-        super(TacotronHRG, self).__init__()
-        self.mel_size = mel_size
-        self.linear_size = linear_size
-        # main embedding for HRGs
+
+        super(TacotronOneSeqwise, self).__init__(
+            n_vocab,
+            embedding_dim=embedding_size,
+            mel_dim=mel_size,
+            linear_dim=linear_size,
+            r=r,
+            padding_idx=None,
+            use_memory_mask=False
+        )
+
+        self.r = r
+        self.mel_size=mel_size
+        self.linear_size=linear_size
+        self.add_info_headers = add_info_headers
         self.embedding = EmbeddingHRG(n_vocab, hidden_size=gcn_hidden_size, embedding_size=embedding_size)
-        # if there are additional headers, create an embedding file for each
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        self.addinfoAndText2embedding = SequenceWise(nn.Linear(embedding_size +\
+             len(self.add_info_headers) * add_info_embedding_size, embedding_size)) 
+
         self.add_info_headers = add_info_headers
         self.add_info_embedding = nn.Sequential(OrderedDict([
             (header, nn.Embedding(n_add_info_vocab, add_info_embedding_size))
             for header in self.add_info_headers
         ]))
         
-        for header in self.add_info_headers:
-            self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
+        # for header in self.add_info_headers:
+        #     self.add_info_embedding._modules[header].weight.data.normal_(0, 0.3)
         # the embedding size scales with more additional headers
-        self.encoder = Encoder(embedding_size)
-        self.mel_decoder = MelDecoder(mel_size, r, add_info_headers, add_info_embedding_size)
-        self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
-        self.last_proj = nn.Linear(mel_size * 2, linear_size)
+        # self.encoder = Encoder(embedding_size + len(self.add_info_headers) * add_info_embedding_size)
+        # self.mel_decoder = MelDecoder(mel_size, r, [], add_info_embedding_size)
+        # self.postnet = CBHG(mel_size, K=8, hidden_sizes=[256, mel_size])
+        # self.last_proj = nn.Linear(mel_size * 2, linear_size)
 
     def forward(self, texts, add_info=None, melspec=None, text_lengths=None):
         txt_feat = self.embedding(texts)
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
-        encoder_outputs = self.encoder(txt_feat, text_lengths)
 
         # if there are additional headers like speaker or accent we
-        # append them to encoder output
+        # append them to txt
         if len(self.add_info_headers):
             additional_embeddings = []
             for header in self.add_info_headers:
-                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(encoder_outputs.device)
+                add_info_tensor = get_tokens_from_additional_info(add_info, header).to(txt_feat.device)
                 additional_embeddings.append(
-                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, encoder_outputs.size(1), 1))
-            encoder_outputs = torch.cat([encoder_outputs] + additional_embeddings, dim=-1)
+                    self.add_info_embedding._modules[header](add_info_tensor).unsqueeze(1).repeat(1, txt_feat.size(1), 1))
+            txt_feat = torch.cat([txt_feat] + additional_embeddings, dim=-1)
             # encoder_outputs now has concatenated embeddings
+            txt_feat = torch.tanh(self.addinfoAndText2embedding(txt_feat))
+        
+        # print("melspec", melspec.size, "r", self.r)
+        
+        encoder_outputs = self.encoder(txt_feat, text_lengths)
+        mel_outputs, alignments = self.decoder(encoder_outputs, melspec, memory_lengths=text_lengths)
+        mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
 
-        mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
+        linear_outputs = self.postnet(mel_outputs)
+        linear_outputs = self.last_linear(linear_outputs)
+
+        # encoder_outputs = self.encoder(txt_feat, text_lengths)        
+        # mel_outputs, alignments = self.mel_decoder(encoder_outputs, melspec)
         # Reshape mel_outputs
         # -> (batch_size, timesteps (decoder), mel_size)
-        mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
-        linear_outputs = self.postnet(mel_outputs)
-        linear_outputs = self.last_proj(linear_outputs)
+        # mel_outputs = mel_outputs.view(batch_size, -1, self.mel_size)
+        # linear_outputs = self.postnet(mel_outputs)
+        # linear_outputs = self.last_proj(linear_outputs)
+
         return mel_outputs, linear_outputs, alignments
 
