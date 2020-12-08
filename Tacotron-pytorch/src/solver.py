@@ -183,7 +183,6 @@ class Trainer(Solver):
 
                 # print (allo_outputs, allophones)
                 allo_loss = self.allo_criterion(allo_outputs.transpose(1,2), allophones)
-                print (mel_loss, linear_loss, -allo_loss)
 
                 loss = mel_loss + linear_loss - self.lambda_allophone * allo_loss
                 loss.backward()
