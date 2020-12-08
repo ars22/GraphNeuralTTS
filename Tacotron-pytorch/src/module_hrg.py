@@ -144,7 +144,7 @@ class TacotronHRG(nn.Module):
         self.allophone_decoder = AllophoneDecoder(self.n_add_info_vocab["allophone"], self.add_info_embedding_size)
         self.allophone_softmax = nn.Softmax(dim=-1)
 
-    def forward(self, texts, add_info=None, melspec=None, text_lengths=None, allo_input=None):
+    def forward(self, texts, add_info=None, melspec=None, text_lengths=None, allo_input=None, infer=False):
         txt_feat = self.embedding(texts)
         batch_size = len(texts)
         # -> (batch_size, timesteps (encoder), text_dim)
@@ -174,12 +174,15 @@ class TacotronHRG(nn.Module):
         linear_outputs = self.postnet(mel_outputs)
         linear_outputs = self.last_proj(linear_outputs)
 
-        allo_input_onehot = torch.FloatTensor(allo_input.shape[0], allo_input.shape[1], self.n_add_info_vocab["allophone"]).to(self.device)
-        allo_input_onehot.zero_()
-        allo_input_onehot.scatter_(2, allo_input.unsqueeze(dim=2), 1)
-        allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs, allo_input)    # Non-teacher forced training
-        allo_outputs = allo_outputs.view(batch_size, -1, self.n_add_info_vocab["allophone"])
-        # allo_outputs = self.allophone_softmax(allo_outputs)
+        if not infer:
+            allo_input_onehot = torch.FloatTensor(allo_input.shape[0], allo_input.shape[1], self.n_add_info_vocab["allophone"]).to(self.device)
+            allo_input_onehot.zero_()
+            allo_input_onehot.scatter_(2, allo_input.unsqueeze(dim=2), 1)
+            allo_outputs, allo_alignments = self.allophone_decoder(encoder_outputs, allo_input)    # Non-teacher forced training
+            allo_outputs = allo_outputs.view(batch_size, -1, self.n_add_info_vocab["allophone"])
+            # allo_outputs = self.allophone_softmax(allo_outputs)
 
-        return mel_outputs, linear_outputs, alignments, allo_outputs, allo_alignments
+            return mel_outputs, linear_outputs, alignments, allo_outputs, allo_alignments
+        else:
+            return mel_outputs, linear_outputs, alignments
 
