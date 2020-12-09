@@ -52,12 +52,21 @@ class VocabAddInfo:
         assert len(id2tok) == len(tok2id), "Invalid vocab"
 
     def get_tok2id(self, tok):
-        if tok in self.tok2id:
-            return self.tok2id[tok]
-        return self.tok2id["<UNK>"]
+        if isinstance(tok, list):
+            ids = []
+            for t in tok:
+                if t in self.tok2id:
+                    ids.append(self.tok2id[t])
+                else:
+                    ids.append(self.tok2id["<UNK>"])
+            return ids
+        else:
+            if tok in self.tok2id:
+                return self.tok2id[tok]
+            return self.tok2id["<UNK>"]
 
     @staticmethod
-    def from_dataset(dataset, entity):
+    def from_dataset(dataset, entity, is_list=False, pad_token=False):
         """Reads and initializes vocab from a directory
 
         Args:
@@ -68,9 +77,17 @@ class VocabAddInfo:
             [type]: [HRGVocab]
         """
         tok2id = {}
+        if pad_token:
+            tok2id[pad_token] = len(tok2id)
+            tok2id["<UNK>"] = len(tok2id)
         for add_info_dict in dataset:
-            if add_info_dict[entity] not in tok2id:
-                tok2id[add_info_dict[entity]] = len(tok2id)
+            if is_list:
+                for token in add_info_dict[entity]:
+                    if token not in tok2id:
+                        tok2id[token] = len(tok2id)
+            else:
+                if add_info_dict[entity] not in tok2id:
+                    tok2id[add_info_dict[entity]] = len(tok2id)
         id2tok = {v: k for k,v in tok2id.items()}
 
         print("Add info:", entity)
