@@ -180,9 +180,9 @@ class Trainer(Solver):
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                allo_loss = self.allo_criterion(allo_outputs.transpose(1,2), allophones)
+                allo_loss = - self.allo_criterion(allo_outputs.transpose(1,2), allophones)
 
-                loss = mel_loss + linear_loss - self.lambda_allophone * allo_loss
+                loss = mel_loss + linear_loss + self.lambda_allophone * allo_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
@@ -203,15 +203,16 @@ class Trainer(Solver):
                     self.write_log('Loss', {
                         'total_loss': loss.item(),
                         'mel_loss': mel_loss.item(),
-                        'linear_loss': linear_loss.item()
+                        'linear_loss': linear_loss.item(),
+                        'allo_loss': allo_loss.item()
                     })
                     # self.write_log('max_grad_norm', max_grad)
                     self.write_log('l2_grad_norm', grad_norm)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(
-                        self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, allo_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(
+                        self.step, loss.item(), mel_loss.item(), linear_loss.item(), allo_loss.item(), grad_norm, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:
