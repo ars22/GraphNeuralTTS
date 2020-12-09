@@ -1,7 +1,9 @@
+from math import inf
 import os
 import math
 import numpy as np
 import json
+from numpy.lib.utils import info
 import torch
 from pathlib import Path
 from tensorboardX import SummaryWriter
@@ -11,6 +13,7 @@ from .utils import AudioProcessor, make_spec_figure, make_attn_figure, clip_grad
 import shutil
 from torch_geometric.data import Batch
 from matplotlib import pyplot as plt
+from .mel_info_classifier import MelClassifier
 
 # Imports based on HRG or No HRG
 MODE = "HRG"
@@ -113,6 +116,19 @@ class Trainer(Solver):
 
         self.model = Tacotron(
             **self.config['model']['tacotron']).to(device=self.device)
+
+        self.info_classifier = MelClassifier(
+            num_class=self.config['model']['tacotron']['n_add_info_vocab'], gru_dropout=0.0).to(device=self.device)
+        self.info_classifier.load_state_dict(torch.load(
+            self.config['solver']['classifier_checkpoint']))
+
+        for param in self.info_classifier.parameters():
+            param.requires_grad = False
+        self.info_classifier.conv_blocks.eval()
+        self.info_classifier.mlp.eval()
+
+        self.info_criterion = torch.nn.CrossEntropyLoss()
+        print(self.info_classifier.gru.dropout)
         self.criterion = torch.nn.L1Loss()
 
         # Optimizer
@@ -156,12 +172,18 @@ class Trainer(Solver):
                 else:
                     txt = txt[indices]
                     txt = txt.to(device=self.device)
-                if add_info:
-                    add_info = [add_info[idx] for idx in indices]
+
+                add_info = [add_info[idx] for idx in indices]
                 mel, spec = mel[indices], spec[indices]
 
                 mel = mel.to(device=self.device)
                 spec = spec.to(device=self.device)
+                
+                info_labels = torch.tensor(
+                    [x[self.add_info_headers[0]] for x in add_info]).to(device=self.device)
+
+    
+
 
                 # Decay learning rate
                 current_lr = self.update_optimizer()
@@ -171,13 +193,19 @@ class Trainer(Solver):
                 mel_outputs, linear_outputs, attn = self.model(
                     txt, add_info=add_info, melspec=mel, text_lengths=sorted_lengths)
                 mel_loss = self.criterion(mel_outputs, mel)
+
+                # info loss
+
+                h_n, logits = self.info_classifier(mel_outputs, sorted_lengths)
+
+                info_loss = self.info_criterion(logits, info_labels).mean()
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                     + 0.5 * \
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss
+                loss = mel_loss + linear_loss  + 0 * info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
@@ -198,15 +226,16 @@ class Trainer(Solver):
                     self.write_log('Loss', {
                         'total_loss': loss.item(),
                         'mel_loss': mel_loss.item(),
-                        'linear_loss': linear_loss.item()
+                        'linear_loss': linear_loss.item(),
+                        'info_loss': info_loss.item()
                     })
                     # self.write_log('max_grad_norm', max_grad)
                     self.write_log('l2_grad_norm', grad_norm)
                     self.write_log('learning_rate', current_lr)
 
                 if self.step % self.config['solver']['log_interval'] == 0:
-                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(
-                        self.step, loss.item(), mel_loss.item(), linear_loss.item(), grad_norm, current_lr)
+                    log = '[{}] total_loss: {:.3f}. mel_loss: {:.3f}, linear_loss: {:.3f}, info_loss: {:.3f}, l2_grad_norm: {:.3f}, lr: {:.5f}'.format(
+                        self.step, loss.item(), mel_loss.item(), linear_loss.item(), info_loss.item(), grad_norm, current_lr)
                     self.progress(log)
 
                 if self.step % self.config['solver']['validation_interval'] == 0 and local_step != 0:
@@ -218,19 +247,14 @@ class Trainer(Solver):
                         self.best_val_err = val_err
                     self.model.train()
 
-                if self.step % self.config['solver']['save_checkpoint_interval'] == 0 and local_step != 0:
-                    self.save_ckpt(tag="scheduled_save")
 
                 # Global step += 1
                 self.step += 1
                 local_step += 1
 
-    def save_ckpt(self, tag=""):
-
-        ckpt_path = (
-            os.path.join(self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step)) if len(tag) == 0
-            else
-            os.path.join(self.checkpoint_dir, "checkpoint_{}_step{}.pth".format(tag, self.step)))
+    def save_ckpt(self):
+        ckpt_path = os.path.join(
+            self.checkpoint_dir, "checkpoint_step{}.pth".format(self.step))
         torch.save({
             "state_dict": self.model.state_dict(),
             "optimizer": self.optim.state_dict(),
@@ -314,9 +338,7 @@ class Trainer(Solver):
             else:
                 txt = txt[indices]
                 txt = txt.to(device=self.device)
-            if add_info:
-                add_info = [add_info[idx] for idx in indices]
-
+            add_info = [add_info[idx] for idx in indices]
             mel, spec = mel[indices], spec[indices]
 
             mel = mel.to(device=self.device)
@@ -422,3 +444,4 @@ class Trainer(Solver):
         plt.hist(diff_phoneme_feat, bins=20, range=(0, 0.25))
         plt.savefig(
             'plots/arctic-hrg-val-phoneme-diff-avg-l2.gcn3.epoch0.hist.png')
+
