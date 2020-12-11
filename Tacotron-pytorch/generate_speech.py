@@ -65,7 +65,8 @@ def generate_speech(args):
             if add_info:
                 add_info = [add_info[idx] for idx in indices]
 
-            
+            id = [id[idx] for idx in indices]
+        
             mel, spec, attn = model(graphs, text_lengths=sorted_lengths, add_info=add_info)
             # Generate wav file
             num_files_to_write = len(graphs)
