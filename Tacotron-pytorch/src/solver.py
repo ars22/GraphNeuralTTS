@@ -198,14 +198,14 @@ class Trainer(Solver):
 
                 h_n, logits = self.info_classifier(mel_outputs, sorted_lengths)
 
-                info_loss = self.info_criterion(logits, info_labels).mean()
+                info_loss =  self.info_criterion(logits, info_labels).mean()
                 # Count linear loss
                 linear_loss = 0.5 * self.criterion(linear_outputs, spec) \
                     + 0.5 * \
                     self.criterion(
                         linear_outputs[:, :, :n_priority_freq], spec[:, :, :n_priority_freq])
 
-                loss = mel_loss + linear_loss  + 0.01 * info_loss
+                loss = mel_loss + linear_loss  + 3e-2 * info_loss
                 loss.backward()
 
                 # Switching to a diff. grad norm scheme
