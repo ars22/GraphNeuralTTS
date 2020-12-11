@@ -7,6 +7,7 @@ Options:
     --data-path=<str>                 [Folder that contains the mel files]
     --splits-path=<str>               [Path to the splits file]
     --checkpoint-path=<str>           [Folder where the classifier checkpoint is supposed to be stored]
+    --attribute=<str>                 [Attribute (speaker/accent)]
 """
 from docopt import docopt
 from os import stat
@@ -26,18 +27,16 @@ import subprocess
 from typing import List
 
 
-
-
-
 class MelClassifier(nn.Module):
     @staticmethod
     def get_1dconv(in_channels, out_channels, max_pool=False):
         return nn.Sequential(nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1),
-                            nn.ELU(),
-                            nn.BatchNorm1d(out_channels),
-                            nn.MaxPool1d(
-                                3, stride=2) if max_pool else nn.Identity(),
-                            nn.Dropout(p=0.1))
+                             nn.ELU(),
+                             nn.BatchNorm1d(out_channels),
+                             nn.MaxPool1d(
+            3, stride=2) if max_pool else nn.Identity(),
+            nn.Dropout(p=0.1))
+
     def __init__(self,
                  num_class,
                  mel_spectogram_dim: int = 80,
@@ -93,7 +92,7 @@ class ArcticUtils(DatasetUtils):
     """
     speaker_accent_dict = {
         "aew": "american", "bdl": "american", "clb": "american", "eey": "american",
-        "jmk": "american", "ljm": "american", "lnh": "american", "rms": "american", 
+        "jmk": "american", "ljm": "american", "lnh": "american", "rms": "american",
         "slt": "american", "ahw": "european", "awb": "european", "fem": "european",
         "rxr": "european", "aup": "hindi", "axb": "hindi", "slp": "hindi", "gka": "telugu", "ksp": "telugu"
     }
@@ -185,6 +184,16 @@ class MelClassifierTrainer(object):
                 datapath=datapath,
                 mel_files=val_files, label_from_filename_func=dataset_utils_class.get_accent_from_filename)
 
+        elif attribute == "speaker":
+            self.train_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=train_files, label_from_filename_func=dataset_utils_class.get_speaker_from_filename)
+            self.test_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=test_files, label_from_filename_func=dataset_utils_class.get_speaker_from_filename)
+            self.val_dataset = MelClassifierDataset(
+                datapath=datapath,
+                mel_files=val_files, label_from_filename_func=dataset_utils_class.get_speaker_from_filename)
         else:
             raise NotImplementedError()
         self.device = torch.device(
@@ -264,5 +273,6 @@ if __name__ == "__main__":
     trainer = MelClassifierTrainer(
         datapath=args["--data-path"],
         splits_pth=args["--splits-path"],
-        checkpoint_pth=args["--checkpoint-path"])
+        checkpoint_pth=args["--checkpoint-path"],
+        attribute=args["--attribute"])
     trainer.run()
