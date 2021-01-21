@@ -252,23 +252,23 @@ class MyDatasetAddInfo(Dataset):
                 meta['add_info'].append(add_info)
 
         # Separate text and additional info
-        self.add_info = [ json.loads(t) for t in meta['add_info'] ]
+        self.add_info = [ t for t in meta['add_info'] ]
         headers = add_info_headers
             
-        # make vocab for each additional info
-        if add_info_vocab is None:
-            print("Creating add_info vocab")
-            self.add_info_vocab = {}
-            for h in headers:
-                self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
-        else:
-            print("Reusing add_info vocab")
-            self.add_info_vocab = add_info_vocab
+        # # make vocab for each additional info
+        # if add_info_vocab is None:
+        #     print("Creating add_info vocab")
+        #     self.add_info_vocab = {}
+        #     for h in headers:
+        #         self.add_info_vocab[h] = VocabAddInfo.from_dataset(self.add_info, h)
+        # else:
+        #     print("Reusing add_info vocab")
+        #     self.add_info_vocab = add_info_vocab
         
         # Convert to ids
-        self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
+        # self.add_info = [ {h:self.add_info_vocab[h].get_tok2id(t[h]) for h in t} for t in self.add_info ]
         # get max vocab size for all the additional info
-        self.n_add_info_vocab = max([self.add_info_vocab[h].n_vocab for h in headers])
+        self.n_add_info_vocab = 0  # max([self.add_info_vocab[h].n_vocab for h in headers])
 
         # make vocab for HRG
         if vocab is None:
