@@ -155,6 +155,8 @@ class HRG:
                 syll_parent_node = f"{syll_parent_node}-{i}-{j}"
                 node_idx[syll_parent_node] = len(node_idx)
                 edges.append([node_idx[word_node], node_idx[syll_parent_node]])
+            
+
                 # now prepare phone nodes
                 for k, syll in enumerate(daughter):
 
@@ -166,6 +168,17 @@ class HRG:
 
                     edges.append(
                         [node_idx[syll_parent_node], node_idx[syll_node]])
+
+            # node-node edge for graphtts
+            for j in range(len(word_rep["daughters"]) - 1):
+                # make syll node
+                curr_node = "".join([syll["syll"] for syll in word_rep["daughters"][j]])
+                curr_node = f"{curr_node}-{i}-{j}"
+
+                next_node = "".join([syll["syll"] for syll in word_rep["daughters"][j + 1]])
+                next_node = f"{next_node}-{i}-{j + 1}"
+
+                edges.append([node_idx[curr_node], node_idx[next_node]])  
 
         return Data(x=torch.tensor(x, dtype=torch.long), edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
                     syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long))
@@ -182,16 +195,19 @@ class MyDataset(Dataset):
         # mel : filenames of mel-spectrogram
         # spec: filenames of (linear) spectrogram
         #
-        meta = {'id':[], 'hrg': [], 'mel': [], 'spec': []}
-        with open(meta_path) as f:
-            for line in f.readlines():
-                # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
-                fmel, fspec, n_frames, hrg = line.split('|')[:4]
-                meta['id'].append("-".join(fmel.split("-")[:-1]))
-                #meta['id'].append(fmel.split("-")[0])
-                meta['hrg'].append(hrg)
-                meta['mel'].append(fmel)
-                meta['spec'].append(fspec)
+        # meta = {'id':[], 'hrg': [], 'mel': [], 'spec': []}
+        meta = pd.read_csv(meta_path, names=["mel", "spec", "n_frames", "hrg"], sep="|")
+        meta["id"] = meta["mel"].apply(lambda fmel: "-".join(fmel.split("-")[:-1]))
+        meta = meta.to_dict(orient="list")
+        # with open(meta_path) as f:
+        #     for line in f.readlines():
+        #         # If there is '\n' in text, it will be discarded when calling symbols.txt2seq
+        #         fmel, fspec, n_frames, hrg = line.strip().split('|')[:4]
+        #         meta['id'].append("-".join(fmel.split("-")[:-1]))
+        #         #meta['id'].append(fmel.split("-")[0])
+        #         meta['hrg'].append(hrg.strip())
+        #         meta['mel'].append(fmel)
+        #         meta['spec'].append(fspec)
 
 
         # make vocab
