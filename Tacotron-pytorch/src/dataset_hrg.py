@@ -142,50 +142,43 @@ class HRG:
 
         edges = []
 
-        syll_node_idxs = []
+        character_node_idxs = []
         for i, word_rep in enumerate(self.hrg_json):
             word_node = f"{word_rep['word']}-{i}"
             word_node_id = self.vocab.get_tok2id(word_rep["word"])
             node_idx[word_node] = len(node_idx)
             x.append(word_node_id)
 
-            for j, daughter in enumerate(word_rep["daughters"]):
-                # make syll node
-                syll_parent_node = ""
-                for syll in daughter:
-                    syll_parent_node += syll["syll"]
-                syll_parent_node_id = self.vocab.get_tok2id(syll_parent_node)
-                x.append(syll_parent_node_id)
-                syll_parent_node = f"{syll_parent_node}-{i}-{j}"
-                node_idx[syll_parent_node] = len(node_idx)
-                edges.append([node_idx[word_node], node_idx[syll_parent_node]])
+            for j, character in enumerate(word_rep["daughters"]):
+                character_node = character[0]["syll"]  # every list has a single char always
+                character_node_id = self.vocab.get_tok2id(character_node)
+                x.append(character_node_id)
+                character_node = f"{character_node}-{i}-{j}"
+                node_idx[character_node] = len(node_idx)
+                edges.append([node_idx[word_node], node_idx[character_node]])
+                character_node_idxs.append(node_idx[character_node])
 
-                # now prepare phone nodes
-                for k, syll in enumerate(daughter):
-
-                    syll_node = f"{syll['syll']}-{i}-{j}-{k}"
-                    syll_node_id = self.vocab.get_tok2id(syll["syll"])
-                    node_idx[syll_node] = len(node_idx)
-                    x.append(syll_node_id)
-                    syll_node_idxs.append(node_idx[syll_node])
-
-                    edges.append([node_idx[syll_parent_node], node_idx[syll_node]])
-
-            # node-node edge for graphtts
+            # char-char edge for the word
             for j in range(len(word_rep["daughters"]) - 1):
                 # make syll node
-                curr_node = "".join([syll["syll"] for syll in word_rep["daughters"][j]])
-                curr_node = f"{curr_node}-{i}-{j}"
+                curr_char = word_rep["daughters"][j][0]["syll"]
+                curr_char = f"{curr_char}-{i}-{j}"
 
-                next_node = "".join([syll["syll"] for syll in word_rep["daughters"][j + 1]])
-                next_node = f"{next_node}-{i}-{j + 1}"
+                next_char = word_rep["daughters"][j + 1][0]["syll"]
+                next_char = f"{next_char}-{i}-{j + 1}"
 
-                edges.append([node_idx[curr_node], node_idx[next_node]])
+                edges.append([node_idx[curr_char], node_idx[next_char]])
+
+        # also add word-word edges
+        for i in range(len(self.hrg_json) - 1):
+            curr_word_node = f"{self.hrg_json[i]['word']}-{i}"
+            next_word_node = f"{self.hrg_json[i + 1]['word']}-{i + 1}"
+            edges.append([node_idx[curr_word_node], node_idx[next_word_node]])
 
         return Data(
             x=torch.tensor(x, dtype=torch.long),
             edge_index=torch.tensor(edges, dtype=torch.long).contiguous().t(),
-            syll_nodes=torch.tensor(syll_node_idxs, dtype=torch.long),
+            syll_nodes=torch.tensor(character_node_idxs, dtype=torch.long),
         )
 
 
