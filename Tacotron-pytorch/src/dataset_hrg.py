@@ -169,11 +169,11 @@ class HRG:
 
                 edges.append([node_idx[curr_char], node_idx[next_char]])
 
-        # also add word-word edges
-        for i in range(len(self.hrg_json) - 1):
-            curr_word_node = f"{self.hrg_json[i]['word']}-{i}"
-            next_word_node = f"{self.hrg_json[i + 1]['word']}-{i + 1}"
-            edges.append([node_idx[curr_word_node], node_idx[next_word_node]])
+        # # also add word-word edges
+        # for i in range(len(self.hrg_json) - 1):
+        #     curr_word_node = f"{self.hrg_json[i]['word']}-{i}"
+        #     next_word_node = f"{self.hrg_json[i + 1]['word']}-{i + 1}"
+        #     edges.append([node_idx[curr_word_node], node_idx[next_word_node]])
 
         return Data(
             x=torch.tensor(x, dtype=torch.long),
